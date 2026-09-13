@@ -304,7 +304,8 @@ npm run build       # 产物只含 index.html + assets/
 - `src/services/cfsm/wsClient.ts` — `/api/ws` 订阅与重连
 - `src/services/api.ts` — 各页面用到的查询函数
 - `src/services/wsStore.ts` — 节点状态 store（列表 + 实时合并 + 轮询兜底）
-- `src/services/pingLiveStore.ts` — 首页延迟条的数据源：后端窗口 + 补缺口用的实时缓冲区
+- `src/services/pingLiveStore.ts` — 首页延迟条的缓冲区：浏览器实测为主，后端窗口只补没测到的时段
+- `src/hooks/useSiteThemeOptions.ts` — 「保存到后端」/「复制配置 JSON」的站点配置快照与发布（`POST /api/theme_options`）
 
 ## 致谢
 
