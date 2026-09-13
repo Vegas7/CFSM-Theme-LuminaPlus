@@ -1889,23 +1889,10 @@ export function ThemeManage() {
       <InstancePanel
         kicker={<><span className="instance-panel-kicker-num">09</span>延迟</>}
         title="主页延迟检测"
-        description={
-          <>
-            CF-Server-Monitor 的探测线路由后端固定，共 {sortedTasks.length} 条（
-            {sortedTasks.map((task) => task.name).join(" / ")}）；探测目标与探测方式都在后台的服务器编辑里配置，
-            主题读不到，没配探测目标的线路没有数据。首页的延迟柱状图取自 /api/servers 下发的探测窗口（不查历史接口，对后端零额外开销）；
-            后端版本较旧、没有该字段时，会退回按实时推送逐格累积，那种情况下需要开着页面才会慢慢填满。
-          </>
-        }
-        aside={
-          <div className="text-[11px] text-[var(--text-tertiary)]">
-            {tasksLoading || clientsLoading
-              ? "载入中"
-              : draft.enableHomepageMultiPing
-                ? `多线路 ${draft.homepageMultiPingTaskIds.length} 条`
-                : "单线路"}
-          </div>
-        }
+        // 用模板字符串拼：JSX 文本换行会在「配置，」和「主题读不到」之间多出一个空格。
+        description={`CF-Server-Monitor 的探测线路由后端固定，共 ${sortedTasks.length} 条（${sortedTasks
+          .map((task) => task.name)
+          .join(" / ")}）；探测目标与探测方式都在后台的服务器编辑里配置，主题读不到，没配探测目标的线路没有数据。`}
       >
         <div className="flex flex-col gap-4">
           {/* 大卡片 / 小卡片显示哪种：单线路还是多线路。原来是个复选框，和下面的单线路设置
