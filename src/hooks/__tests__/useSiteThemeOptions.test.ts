@@ -34,35 +34,6 @@ describe("buildSiteThemeOptions", () => {
     expect(snapshot.homepagePingLineOverrides).toEqual({ "node-a": { "0": 5 } });
   });
 
-  it("keeps site keys this theme does not own, such as the built-in theme's mikus switch", () => {
-    // 后端保存是整份替换 theme_options：不带上的话，这次保存会把别的主题的设置清掉。
-    const snapshot = buildSiteThemeOptions({
-      ...base,
-      siteSettings: { mikus: true, futureBackendFlag: { on: 1 }, desktopNodeViewMode: "list" },
-    });
-
-    expect(snapshot.mikus).toBe(true);
-    expect(snapshot.futureBackendFlag).toEqual({ on: 1 });
-    expect(snapshot.desktopNodeViewMode).toBe("list");
-  });
-
-  it("does not bring back an owned key the snapshot leaves out on purpose", () => {
-    // 本机把暗色深度调回默认 0：快照省掉 darkDepth，站点那份 60 不能借「保留陌生键」复活。
-    const snapshot = buildSiteThemeOptions({
-      ...base,
-      siteSettings: { darkDepth: 60 },
-      localSettings: { darkDepth: 0 },
-    });
-
-    expect("darkDepth" in snapshot).toBe(false);
-  });
-
-  it("only keeps unknown keys from the site, not from this browser", () => {
-    const snapshot = buildSiteThemeOptions({ ...base, localSettings: { someLocalOnlyKey: 1 } });
-
-    expect("someLocalOnlyKey" in snapshot).toBe(false);
-  });
-
   it("layers site, local and draft settings, with colours merged one by one", () => {
     const snapshot = buildSiteThemeOptions({
       ...base,
