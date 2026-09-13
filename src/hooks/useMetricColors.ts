@@ -53,6 +53,8 @@ type MetricColors = Partial<Record<MetricColorKey, string>>;
 
 const SETTINGS_KEY = "metricColors";
 const DARK_DEPTH_SETTINGS_KEY = "darkDepth";
+/** 配色存在主题设置里的键。不在 normalizeThemeSettings 白名单里，拼站点快照时要单独认领。 */
+export const PALETTE_SETTINGS_KEYS: readonly string[] = [SETTINGS_KEY, DARK_DEPTH_SETTINGS_KEY];
 const DARK_DEPTH_CACHE_KEY = "cfsm-luminaplus:dark-depth";
 const HEX = /^#[0-9a-f]{6}$/;
 export const DEFAULT_DARK_DEPTH = 0;

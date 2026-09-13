@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { pickPaletteSettings } from "@/hooks/useMetricColors";
+import { PALETTE_SETTINGS_KEYS, pickPaletteSettings } from "@/hooks/useMetricColors";
 import { useAllPingLineOverrides } from "@/hooks/usePingOverview";
 import { usePublicConfig } from "@/hooks/usePublicConfig";
 import { useLocalThemeSettings } from "@/hooks/useThemeSettings";
@@ -36,7 +36,8 @@ export interface SiteThemeOptionsSources {
  *
  * 1. 主题设置白名单（normalizeThemeSettings）：站点 → 本机 → 草稿逐层盖，默认外观先垫后台的设置；
  * 2. 卡片上换过的线路按行并进 `homepagePingLineOverrides`；
- * 3. 配色逐个颜色叠（pickPaletteSettings），不能跟着第 1 条整键盖。
+ * 3. 配色逐个颜色叠（pickPaletteSettings），不能跟着第 1 条整键盖；
+ * 4. 站点配置里本主题不认识的键原样保留。
  *
  * 取色器的「保存到后端」早先自己拼了一份：没垫后台默认外观 —— 主题设置里没写默认外观时写成了
  * 「跟随系统」，把后台设的深色 / 浅色对所有访客盖掉；也没带卡片上换的线路。
@@ -55,7 +56,7 @@ export function buildSiteThemeOptions({
       ...draftSettings,
     }) as ThemeSettings & Record<string, unknown>,
   );
-  return {
+  const snapshot: Record<string, unknown> = {
     ...normalized,
     // 本机换过的行压过站点已存的那份（见 mergePingLineOverridesByNode）。
     homepagePingLineOverrides: mergePingLineOverridesByNode(
@@ -65,6 +66,16 @@ export function buildSiteThemeOptions({
     ),
     ...pickPaletteSettings(siteSettings, localSettings),
   };
+
+  // 站点配置里本主题不管的键原样带上：后端保存是整份替换 theme_options，不带就会被这次保存清掉
+  // （例如内置主题读的樱花开关 `mikus`）。本主题管的键一律以快照为准 —— 快照里故意省掉的
+  // （暗色深度等于默认值时不写）也不能从站点那份复活。只认站点的，本机存的陌生键不往外发。
+  const ownedKeys = new Set([...Object.keys(normalized), ...PALETTE_SETTINGS_KEYS]);
+  for (const [key, value] of Object.entries(siteSettings ?? {})) {
+    if (key === "__proto__" || ownedKeys.has(key)) continue;
+    snapshot[key] = value;
+  }
+  return snapshot;
 }
 
 /**
