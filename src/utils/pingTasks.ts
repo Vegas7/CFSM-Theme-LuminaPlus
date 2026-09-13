@@ -20,8 +20,8 @@ export function isHomepageMultiPingConfigured(taskIds: readonly number[]): boole
 }
 
 /**
- * CF-Server-Monitor 的探测点是固定的四条线路（电信/联通/移动/BD），每台节点都具备，
- * 因此没有绑定关系的节点直接落到默认线路，而不是不显示延迟。
+ * 兜底的默认线路：电信。CF-Server-Monitor 的探测线路由后端固定（八条），没有绑定关系的节点
+ * 直接落到默认线路，而不是不显示延迟。
  */
 export const DEFAULT_HOMEPAGE_PING_TASK_ID = 1;
 

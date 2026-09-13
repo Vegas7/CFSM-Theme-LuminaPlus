@@ -8,12 +8,10 @@ import {
   getNodeMetricsSnapshot,
   getNodeTrafficTrendSnapshot,
   getNodeOnlineSummariesSnapshot,
-  getVisibleNodeUuidsSnapshot,
   subscribeHomeNodeSummaries,
   subscribeNodeOnlineSummaries,
   subscribeAllNodes,
   subscribeStoreStatus,
-  subscribeVisibleNodeUuids,
   subscribeToNodeMeta,
   subscribeToNodeMetrics,
   subscribeToNodeTrafficTrend,
@@ -90,19 +88,6 @@ export function useNodeCardSnapshots(uuid: string) {
     metrics: useNodeMetricsSnapshot(uuid),
     trafficTrend: useNodeTrafficTrendSnapshot(uuid),
   };
-}
-
-export function useVisibleNodeUuids(includeHidden = false): string[] {
-  useEnsured();
-  const getSnapshot = useCallback(
-    () => getVisibleNodeUuidsSnapshot(includeHidden),
-    [includeHidden],
-  );
-  return useSyncExternalStore(
-    subscribeVisibleNodeUuids,
-    getSnapshot,
-    getSnapshot,
-  );
 }
 
 export function useAllNodeMeta(): NodeInfo[] {

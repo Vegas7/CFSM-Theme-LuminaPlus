@@ -67,7 +67,12 @@ html = html.replace(
 
 const title = (env.TITLE ?? "").trim();
 if (title) {
-  html = html.replace(/<title>.*?<\/title>/s, `<title>${escapeHtml(title)}</title>`);
+  // 另写一个 siteTitle meta：主题挂载后会用后台的站点标题改写 document.title，
+  // 看到它才知道部署时指定过标题、以它为准（见 config.ts 的 getStaticSiteTitle）。
+  html = html.replace(
+    /<title>.*?<\/title>/s,
+    `<title>${escapeHtml(title)}</title>\n    <meta name="siteTitle" content="${escapeHtml(title)}" />`,
+  );
 }
 
 const backgroundImage = (env.BACKGROUND_IMAGE ?? "").trim();

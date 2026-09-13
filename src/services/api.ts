@@ -57,10 +57,12 @@ export function getServerApiBase(serverId: string): string | undefined {
   return serverBaseIndex.get(serverId);
 }
 
-function rememberServerBases(base: string, servers: CfsmServer[]) {
-  for (const server of servers) {
-    if (server.id) serverBaseIndex.set(server.id, base);
-  }
+/**
+ * 只记快照最终采用的那份归属（同一 ID 多站重复时是第一个站）。按各站原始列表逐个写的话，
+ * 后面的站会把前面的覆盖掉：卡片和 WS 走第一个站，详情和历史却打到另一个站。
+ */
+function rememberServerBases(baseByServerId: ReadonlyMap<string, string>) {
+  for (const [serverId, base] of baseByServerId) serverBaseIndex.set(serverId, base);
 }
 
 /** 把后端时长参数收敛到受支持的档位，避免 400。 */
@@ -86,6 +88,31 @@ export async function getSiteConfig(options?: RequestOptions) {
   return cfsmGet("/api/config", SiteConfigSchema, options);
 }
 
+/**
+ * 刚「保存到后端」之后多久之内，读 `/api/config` 时以自己写进去的 theme_options 为准。
+ *
+ * 后端的站点设置在每个 Worker isolate 里各缓存 120 秒（`SITE_SETTINGS_CACHE_TTL_MS`），保存只清得掉
+ * 处理这次写入的那一个。接下来两分钟里的读取可能落到别的 isolate、拿回旧的一份：设置页变回「有未保存的
+ * 改动」，首页退回旧设置 —— 而本机覆盖在保存成功时已经丢了，这台设备就看不到刚发布的配置了。
+ * 多留 30 秒余量。
+ */
+const THEME_OPTIONS_WRITE_TRUST_MS = 150_000;
+let recentThemeOptionsWrite: { at: number; themeOptions: Record<string, unknown> } | null = null;
+
+function resolveThemeOptions(fetched: Record<string, unknown>): Record<string, unknown> {
+  if (!recentThemeOptionsWrite) return fetched;
+  if (Date.now() - recentThemeOptionsWrite.at > THEME_OPTIONS_WRITE_TRUST_MS) {
+    recentThemeOptionsWrite = null;
+    return fetched;
+  }
+  return recentThemeOptionsWrite.themeOptions;
+}
+
+/** 测试用。 */
+export function resetRecentThemeOptionsWrite(): void {
+  recentThemeOptionsWrite = null;
+}
+
 /** `POST /api/theme_options` 的响应体（`{ success, theme_options, message }`）。 */
 const ThemeOptionsSaveSchema = z
   .object({
@@ -104,18 +131,23 @@ const ThemeOptionsSaveSchema = z
  * 「复制 JSON → 手动粘到后台『外观设置 → 主题自定义配置』」的老路；访客配置仍只进 localStorage。
  *
  * body 里的 `themeOptions` 必须是非数组对象，否则后端返回 `400 invalidThemeOptionsFormat`
- * —— 调用方（设置页）传的是归一化白名单 + 配色的快照，天然满足。
+ * —— 调用方传的是 `buildSiteThemeOptions` 拼的快照，天然满足。成功后一段时间内读 config 以这份为准，
+ * 见 {@link THEME_OPTIONS_WRITE_TRUST_MS}。
  */
 export async function saveThemeOptions(
   themeOptions: Record<string, unknown>,
   options?: RequestOptions,
 ) {
-  return cfsmPost(
+  const result = await cfsmPost(
     "/api/theme_options",
     { theme_options: themeOptions },
     ThemeOptionsSaveSchema,
     options,
   );
+  // 后端回的是它实际存下的那份；万一没回（空对象）就按提交的算。
+  const saved = Object.keys(result.theme_options).length > 0 ? result.theme_options : themeOptions;
+  recentThemeOptionsWrite = { at: Date.now(), themeOptions: saved };
+  return { ...result, theme_options: saved };
 }
 
 /**
@@ -132,8 +164,8 @@ export async function getPublic(options?: RequestOptions): Promise<PublicConfig>
     turnstile_enabled: config.turnstile_enabled,
     turnstile_site_key: config.turnstile_site_key,
     verified: config.verified,
-    // 第三方主题的自定义配置是只读的，只作为主题设置的默认值来源。
-    theme_settings: config.theme_options,
+    // 站点级的主题设置（本机覆盖叠在它上面）。刚保存过就先信自己写进去的，见 THEME_OPTIONS_WRITE_TRUST_MS。
+    theme_settings: resolveThemeOptions(config.theme_options),
     latencyWindow: config.latency_window,
     frontendWsTimeoutMinutes: config.frontend_ws_timeout_minutes,
     preferredAppearance: resolvePreferredAppearance(config.preferred_theme),
@@ -186,8 +218,10 @@ export interface ServersSnapshot {
   sysConfig: SysConfig;
   regionStats: Record<string, number>;
   stats: AggregatedStats;
-  /** 至少有一个后端成功返回。 */
+  /** 有后端没返回数据（全部失败时直接抛错，走不到这里）。 */
   partial: boolean;
+  /** 这次没返回数据的后端（多站部署）。它们名下的节点不在 `servers` 里，但不代表被删了。 */
+  failedBases: string[];
 }
 
 export interface AggregatedStats {
@@ -235,6 +269,7 @@ export async function getServersSnapshot(
   const baseByServerId = new Map<string, string>();
   const regionStats: Record<string, number> = {};
   const stats = emptyStats();
+  const failedBases: string[] = [];
   let sysConfig: SysConfig | null = null;
   let succeeded = 0;
   let firstError: unknown = null;
@@ -242,6 +277,7 @@ export async function getServersSnapshot(
   for (const result of results) {
     if (!result.data) {
       firstError ??= result.error;
+      failedBases.push(result.base);
       continue;
     }
     succeeded += 1;
@@ -254,7 +290,6 @@ export async function getServersSnapshot(
       baseByServerId.set(server.id, result.base);
       servers.push(server);
     }
-    rememberServerBases(result.base, result.data.servers);
 
     for (const [region, count] of Object.entries(result.data.regionStats)) {
       regionStats[region] = (regionStats[region] ?? 0) + Number(count ?? 0);
@@ -271,6 +306,7 @@ export async function getServersSnapshot(
       ? firstError
       : new Error("All API bases failed to return /api/servers");
   }
+  rememberServerBases(baseByServerId);
 
   return {
     servers,
@@ -278,7 +314,8 @@ export async function getServersSnapshot(
     sysConfig: sysConfig ?? ({} as SysConfig),
     regionStats,
     stats,
-    partial: succeeded < results.length,
+    partial: failedBases.length > 0,
+    failedBases,
   };
 }
 
@@ -333,7 +370,7 @@ async function requestHistoryRows(
 /**
  * 历史查询的短期缓存。
  *
- * CF-Server-Monitor 没有批量历史接口，一台节点一次请求；而首页 Ping 概览会为四条线路
+ * CF-Server-Monitor 没有批量历史接口，一台节点一次请求；而首页 Ping 概览会为各条线路
  * 分别取数据。缓存让同一节点同一时长的并发/连续请求只打一次后端。
  */
 const HISTORY_CACHE_TTL_MS = 20_000;
@@ -489,7 +526,7 @@ export async function getLoadRecords(
 }
 
 /**
- * Ping 历史。CF-Server-Monitor 的探测点固定为电信/联通/移动/BD 四条线路，
+ * Ping 历史。CF-Server-Monitor 的探测线路由后端固定（八条，见 CARRIER_TASKS），
  * 数据与负载共用同一张历史表，因此这里复用同一个请求形状。
  */
 export async function getPingRecords(
@@ -522,8 +559,11 @@ function buildPingStats(
   const lossByTask = new Map<number, { lost: number; total: number }>();
 
   for (const record of records) {
+    // 整轮超时的记录（值是 PING_TIMEOUT_VALUE，负数）只算丢包、不进延迟统计：详情页线路按钮上
+    // 「当前」读的是这里的 latest，混进来就会显示「-1.0 ms」，最小值和均值也跟着被拉低。
+    // 线路本身照样留着（全超时的线路也要显示丢包率），所以先建条目再决定要不要放值。
     const values = byTask.get(record.task_id) ?? [];
-    values.push(record.value);
+    if (record.value >= 0) values.push(record.value);
     byTask.set(record.task_id, values);
 
     const loss = lossByTask.get(record.task_id) ?? { lost: 0, total: 0 };

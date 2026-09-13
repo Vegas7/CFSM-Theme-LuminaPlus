@@ -6,6 +6,7 @@ import { getSiteConfig } from "@/services/api";
 import {
   getTurnstileVerified,
   setTurnstileToken,
+  subscribeTurnstileCredentialsCleared,
 } from "@/services/cfsm/config";
 
 /**
@@ -65,6 +66,16 @@ export function TurnstileGate() {
   const widgetIdRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
+
+  // 凭证过期后，首页轮询、保存到后端等请求会被 403，http 层清掉凭证并通知这里：重新拉 config，
+  // 让下面的判断拿到 `verified: false`，弹窗重新出来。
+  useEffect(
+    () =>
+      subscribeTurnstileCredentialsCleared(() => {
+        void queryClient.invalidateQueries({ queryKey: ["public"] });
+      }),
+    [queryClient],
+  );
 
   // 已经拿到缓存凭证或本次请求已通过验证时不打扰用户。
   const needsVerification =

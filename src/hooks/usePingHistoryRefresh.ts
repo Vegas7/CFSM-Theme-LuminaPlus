@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { refreshPingHistory, type PingHistoryRefreshResult } from "@/services/api";
-import { useVisibleNodeUuids } from "@/hooks/useNode";
+import { useVisibleNodes } from "@/hooks/useVisibleNodes";
 
 export type PingHistoryRefreshStatus = "idle" | "loading" | "done" | "error" | "warn";
 
@@ -101,7 +101,10 @@ export interface PingHistoryRefreshOptions {
  * 免得「早上点过一次警告、下午随手一点就直接刷了」。
  */
 export function usePingHistoryRefresh(): PingHistoryRefreshState {
-  const uuids = useVisibleNodeUuids();
+  // 刷的就是首页上显示的那些节点，口径与首页网格一致（useVisibleNodes）：主题设置里隐藏的节点不显示也就不刷
+  // （刷了是白读 D1），后台隐藏的节点登录站长看得到、也要刷。
+  const visibleNodes = useVisibleNodes();
+  const uuids = useMemo(() => visibleNodes.map((node) => node.uuid), [visibleNodes]);
   const [status, setStatus] = useState<PingHistoryRefreshStatus>("idle");
   const [lastResult, setLastResult] = useState<PingHistoryRefreshResult | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<number | null>(null);

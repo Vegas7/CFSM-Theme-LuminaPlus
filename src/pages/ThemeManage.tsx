@@ -33,10 +33,10 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Flag } from "@/components/ui/Flag";
 import { useCarrierNames, usePublicConfig } from "@/hooks/usePublicConfig";
 import { useHourlyClock } from "@/hooks/useClock";
-import { pickPaletteSettings } from "@/hooks/useMetricColors";
 import { useAllPingLineOverrides } from "@/hooks/usePingOverview";
+import { useSiteThemeOptions } from "@/hooks/useSiteThemeOptions";
 import { useLocalThemeSettings } from "@/hooks/useThemeSettings";
-import { getNodes, saveThemeOptions } from "@/services/api";
+import { getNodes } from "@/services/api";
 import { getJwtToken } from "@/services/cfsm/config";
 import { ApiRequestError } from "@/services/cfsm/http";
 import { carrierPingTasks } from "@/services/cfsm/mappers";
@@ -62,7 +62,6 @@ import {
   type CostPremiumEntry,
 } from "@/utils/cost";
 import { normalizeNodeIdentityList } from "@/utils/nodeIdentity";
-import { mergePingLineOverridesByNode } from "@/utils/pingLineOverrides";
 import {
   dedupeGroupLabels,
   normalizeHomeGroupOrder,
@@ -418,7 +417,7 @@ const TaskBindingSection = memo(function TaskBindingSection({
   ) => void;
 }) {
   const assignedSummary = summarizeNodes(assigned, clientsById);
-  // 探测点是后端固定的四条线路，没绑定的节点会落到站长选的「默认线路」，这里标出来免得站长
+  // 探测线路是后端固定的，没绑定的节点会落到站长选的「默认线路」，这里标出来免得站长
   // 以为「0 个节点」就是没人用它。
   const isDefaultTask = task.id === defaultTaskId;
   // 过滤只有展开的任务需要;收起的卡片跳过,搜索输入不再对每个任务做 O(clients) 扫描。
@@ -791,8 +790,8 @@ export function ThemeManage() {
     });
   }, [commitMultiPingTaskIds]);
 
-  // CF-Server-Monitor 的探测点固定为四条线路，没有可配置的 ping 任务列表；
-  // 名字则跟着后端的 custom_*_name 走（站长改过就显示他改的）。
+  // CF-Server-Monitor 的探测线路由后端固定（八条，见 CARRIER_TASKS），没有可配置的 ping 任务列表；
+  // 名字则跟着后端的 custom_*_name / node_N_name 走（站长改过就显示他改的）。
   const pingTasks = useMemo(() => carrierPingTasks(carrierNames), [carrierNames]);
   const tasksLoading = false;
   const {
@@ -1104,32 +1103,12 @@ export function ThemeManage() {
   };
 
   /**
-   * 当前设置导出成后台「主题自定义配置」能直接粘贴的 JSON。
-   *
-   * 第三方主题不能写后端设置，多设备同步只能走这条路：复制 → 粘进后台 → 所有设备（以及
-   * 所有访客）都以它为默认值。导出的是完整快照，包含配色等本页之外的设置。
+   * 当前设置的完整站点快照：「复制配置 JSON」粘到后台「主题自定义配置」，或「保存到后端」直接写上去，
+   * 所有设备（以及所有访客）都以它为默认值。含配色、卡片上换过的线路等本页之外的设置，
+   * 拼法见 buildSiteThemeOptions（取色器的「保存到后端」用的是同一份）。
    */
-  const siteDefaults = useMemo(() => {
-    // 配色的口径和全站一致：站点预设打底，本机覆盖在上。normalizeThemeSettings 是白名单，
-    // 认不得 metricColors / darkDepth，所以取色器调的配色要单独并回快照。
-    const merged = {
-      ...(config?.theme_settings ?? {}),
-      ...localThemeSettings,
-      ...draftThemeSettings,
-    } as ThemeSettings & Record<string, unknown>;
-    const normalized = normalizeThemeSettings(merged);
-    return {
-      ...normalized,
-      // 卡片上换过的线路也并进快照：站长在卡片上换好、点「保存到后端」就对所有访客生效。按行叠，
-      // 本机换过的行压过站点已存的那份（见 mergePingLineOverridesByNode）。
-      homepagePingLineOverrides: mergePingLineOverridesByNode(
-        normalized.homepageMultiPingTaskIds,
-        normalized.homepagePingLineOverrides,
-        localLineOverrides,
-      ),
-      ...pickPaletteSettings(merged),
-    } as Record<string, unknown>;
-  }, [config?.theme_settings, localThemeSettings, draftThemeSettings, localLineOverrides]);
+  const { snapshot: siteDefaults, publish: publishSiteDefaults } =
+    useSiteThemeOptions(draftThemeSettings);
 
   // 「复制配置 JSON」（手动粘后台）与「保存到后端」（POST /api/theme_options）用的是同一份快照。
   const siteDefaultsJson = useMemo(
@@ -1151,27 +1130,25 @@ export function ThemeManage() {
 
   /**
    * 一键把当前配置写到站点级（后端 `theme_options`），替代「复制 JSON → 手动粘到后台」。
-   * 仅登录站长可用。成功后按用户选定的「自动同步」丢掉本机覆盖、用刚提交的快照重新播种草稿，
-   * 让当前设备立刻以站点预设为准（不必等 config 查询回灌）。
+   * 仅登录站长可用。成功后当前设备立刻以刚存下的站点配置为准（丢本机覆盖、写 config 缓存，见
+   * useSiteThemeOptions），草稿用刚提交的快照重新播种。
    */
   const handleSaveToSite = async () => {
+    // 和「保存到本机」同样把关：非法的汇率接口地址会被归一化成默认地址静默存上去，
+    // 开着多线路却一条线路都没选会让所有访客静默退回单线路。
+    if (savingSite || saving || draftCostRateApiUrlInvalid || draftMultiPingInvalid) return;
     setError(null);
     setMessage(null);
     setSavingSite(true);
     try {
-      await saveThemeOptions(siteDefaults);
-      resetLocalThemeSettings();
-      // 卡片上换过的线路已经并进刚提交的快照；本机那份不丢的话会一直压着站点那份。
-      clearPingLineOverrides();
+      await publishSiteDefaults();
       seedDrafts(normalizeThemeSettings(siteDefaults));
-      void refetchConfig(); // 让其它消费者（首页等）也拿到最新站点预设。
       setMessage("已保存到后端：所有设备与访客都会以这套配置为默认值");
     } catch (saveError) {
       if (saveError instanceof ApiRequestError && saveError.status === 401) {
         setError("登录态已失效，请到 /admin 重新登录后再保存到后端（本机设置不受影响）");
       } else if (saveError instanceof ApiRequestError && saveError.status === 403) {
-        // http 层已清掉 Turnstile 凭证；刷新 config 让全局验证弹窗重新出现。
-        void refetchConfig();
+        // http 层清掉失效的 Turnstile 凭证后会通知全局验证弹窗重新拉 config、重新弹出（见 TurnstileGate）。
         setError("本站需要人机验证：完成弹出的验证后，再点一次「保存到后端」");
       } else if (saveError instanceof ApiRequestError && saveError.status === 400) {
         setError("配置格式被后端拒绝（invalidThemeOptionsFormat），请把这条信息反馈给作者");
@@ -1316,7 +1293,9 @@ export function ThemeManage() {
               <button
                 type="button"
                 onClick={() => void handleSaveToSite()}
-                disabled={savingSite || saving}
+                disabled={
+                  savingSite || saving || draftCostRateApiUrlInvalid || draftMultiPingInvalid
+                }
                 className="theme-manage-button is-primary"
                 title="把当前设置写到后端，所有设备与访客都会生效；成功后本机自动跟随这套配置"
               >
@@ -1912,9 +1891,9 @@ export function ThemeManage() {
         title="主页延迟检测"
         description={
           <>
-            CF-Server-Monitor 的探测点固定为 {carrierNames.ct} / {carrierNames.cu} / {carrierNames.cm} /{" "}
-            {carrierNames.bd} 四条线路，每台节点都有；探测目标与探测方式都在后台的服务器编辑里配置，
-            主题读不到。首页的延迟柱状图取自 /api/servers 下发的探测窗口（不查历史接口，对后端零额外开销）；
+            CF-Server-Monitor 的探测线路由后端固定，共 {sortedTasks.length} 条（
+            {sortedTasks.map((task) => task.name).join(" / ")}）；探测目标与探测方式都在后台的服务器编辑里配置，
+            主题读不到，没配探测目标的线路没有数据。首页的延迟柱状图取自 /api/servers 下发的探测窗口（不查历史接口，对后端零额外开销）；
             后端版本较旧、没有该字段时，会退回按实时推送逐格累积，那种情况下需要开着页面才会慢慢填满。
           </>
         }

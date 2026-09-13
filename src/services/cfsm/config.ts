@@ -45,6 +45,17 @@ function readMetaApiBases(): string[] {
     .filter(Boolean);
 }
 
+/**
+ * 纯静态部署时 `.env` 里指定的页面标题（`npm run build:github-page` 写进 `<meta name="siteTitle">`）。
+ * 部署的人明确指定了标题就以它为准，没指定时返回空串、跟随后台外观设置里的站点标题。
+ */
+export function getStaticSiteTitle(): string {
+  if (typeof document === "undefined") return "";
+  return (
+    document.querySelector<HTMLMetaElement>('meta[name="siteTitle"]')?.content?.trim() ?? ""
+  );
+}
+
 /** 后端地址列表，至少含一项；多站部署时按 meta 顺序返回。 */
 export function getApiBases(): string[] {
   if (cachedApiBases) return cachedApiBases;
@@ -142,7 +153,25 @@ export function setTurnstileVerified(value: string): void {
   if (value) writeStorage(TURNSTILE_TOKEN_KEY, "");
 }
 
+const turnstileClearedListeners = new Set<() => void>();
+
+/**
+ * 凭证被后端拒掉、清掉之后通知一次。全局验证弹窗（TurnstileGate）靠它重新拉 `/api/config`：
+ * 缓存里那份 config 是验证通过时拉的（`verified: true`），不重新拉，凭证一小时过期后弹窗永远不会再出来，
+ * 首页只剩「同步异常」。
+ */
+export function subscribeTurnstileCredentialsCleared(listener: () => void): () => void {
+  turnstileClearedListeners.add(listener);
+  return () => {
+    turnstileClearedListeners.delete(listener);
+  };
+}
+
 export function clearTurnstileCredentials(): void {
+  const hadCredentials = Boolean(getTurnstileToken() || getTurnstileVerified());
   writeStorage(TURNSTILE_TOKEN_KEY, "");
   writeStorage(TURNSTILE_VERIFIED_KEY, "");
+  // 真清掉了东西才通知：凭证已经没了之后，轮询每次 403 都再拉一遍 config 是白打请求。
+  if (!hadCredentials) return;
+  for (const listener of [...turnstileClearedListeners]) listener();
 }

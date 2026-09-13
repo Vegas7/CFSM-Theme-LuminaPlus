@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Cpu,
   MemoryStick,
@@ -20,6 +20,9 @@ import {
   useMetricColorsEditor,
   type MetricColorKey,
 } from "@/hooks/useMetricColors";
+import { useSiteThemeOptions } from "@/hooks/useSiteThemeOptions";
+import { ApiRequestError } from "@/services/api";
+import { getJwtToken } from "@/services/cfsm/config";
 
 const DARK_DEPTH_PRESETS = [
   { value: 0, label: "灰黑", title: "当前默认色" },
@@ -45,18 +48,46 @@ export function MetricColorPicker({ hidden = false }: { hidden?: boolean }) {
   const {
     colors,
     darkDepth,
+    overriddenColors,
     setColor,
     resetColor,
     setDarkDepth,
     resetAll,
     hasLocalOverrides,
     saveError,
-    canSaveToBackend,
-    savingToBackend,
-    backendSaveState,
-    saveToBackend,
   } = useMetricColorsEditor();
   const { resolvedAppearance } = usePreferences();
+
+  // 登录站长可把当前配色（连同其它本机设置）一并写到后端，成为所有设备的默认值。
+  // 发的是和设置页同一份站点快照（useSiteThemeOptions），不是只有配色。
+  const { publish } = useSiteThemeOptions();
+  const canSaveToBackend = useMemo(() => Boolean(getJwtToken()), []);
+  const [savingToBackend, setSavingToBackend] = useState(false);
+  const [backendSaveState, setBackendSaveState] = useState<
+    { kind: "ok" | "error"; text: string } | null
+  >(null);
+  const saveToBackend = async () => {
+    setBackendSaveState(null);
+    setSavingToBackend(true);
+    try {
+      await publish();
+      setBackendSaveState({ kind: "ok", text: "已保存到后端" });
+    } catch (error) {
+      const status = error instanceof ApiRequestError ? error.status : 0;
+      // 403：http 层清掉失效的人机验证凭证后，全局验证弹窗会自己重新出来（见 TurnstileGate）。
+      const text =
+        status === 401
+          ? "登录态已失效，请到 /admin 重新登录"
+          : status === 403
+            ? "需要先完成人机验证，完成后再点一次"
+            : error instanceof Error
+              ? error.message
+              : "保存到后端失败";
+      setBackendSaveState({ kind: "error", text });
+    } finally {
+      setSavingToBackend(false);
+    }
+  };
 
   // 默认色（无覆盖时生效的 token）。只在明暗模式切换/重置时重读 ——
   // 不能放进拖动热路径：getComputedStyle 会强制同步重排，每帧多次=掉帧。
@@ -161,7 +192,8 @@ export function MetricColorPicker({ hidden = false }: { hidden?: boolean }) {
           <div className="metric-color-list">
             {METRIC_COLOR_META.filter((item) => item.group === group.id).map(({ key, label }) => {
               const Icon = ICONS[key];
-              const overridden = colors[key] != null;
+              // 只有本机改过的颜色能「恢复」（回到站点预设色，站点没设才是主题默认色）。
+              const overridden = overriddenColors[key] != null;
               return (
                 <div className="metric-color-row" key={key}>
                   <Icon size={14} className="metric-color-icon" />

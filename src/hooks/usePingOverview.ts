@@ -21,7 +21,7 @@ import {
   carrierTaskName,
   inferIntervalSeconds,
 } from "@/services/cfsm/mappers";
-import { CARRIER_LOSS_KEYS } from "@/types/cfsm";
+import { CARRIER_KEYS, CARRIER_LOSS_KEYS } from "@/types/cfsm";
 import type {
   CarrierNames,
   CarrierPingSnapshot,
@@ -257,11 +257,14 @@ function getCachedLines(
   return lines;
 }
 
-/** 默认名走同一个常量，键里只写个短标记，免得每次渲染都拼四个名字。 */
+/**
+ * 默认名走同一个常量，键里只写个短标记，免得每次渲染都拼一遍名字。
+ * 改过名时按线路表逐条拼、不手写字段：手写时只拼了前四条，站长只改 Node 1~4 的名字，缓存就一直顶回旧名字。
+ */
 function carrierNamesKey(names: CarrierNames): string {
   return names === DEFAULT_CARRIER_NAMES
     ? "default"
-    : `${names.ct}|${names.cu}|${names.cm}|${names.bd}`;
+    : CARRIER_KEYS.map((key) => names[key]).join("|");
 }
 
 function usePingSamples(uuid: string, enabled: boolean): readonly PingLiveSample[] {

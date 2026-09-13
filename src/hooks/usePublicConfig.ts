@@ -27,7 +27,7 @@ export function useLatencyWindowMs(): number | undefined {
 }
 
 /**
- * 四条线路的显示名。站长在后端改过（`/api/config` 的 `custom_ct_name` 等）就用他改的，
+ * 各条线路的显示名。站长在后端改过（`/api/config` 的 `custom_ct_name`、`node_1_name` 等）就用他改的，
  * 老后端 / 没改过时是 `DEFAULT_CARRIER_NAMES` 那个常量本身 —— 引用稳定，可以直接进
  * useMemo 依赖和缓存键。config 还没到时同样先给默认名，到了之后订阅这个 query 的组件
  * 会重渲染，名字自己换过去。

@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CfsmServerSchema } from "@/types/cfsm";
+import { CfsmServerSchema, EMPTY_CARRIER_PING } from "@/types/cfsm";
 
 /**
  * 实时连接的暂停与恢复：页面进后台（后端文档要求隐藏时断开）与站长设的连接时限
  * （`frontend_ws_timeout_minutes`）。两者都直接关系到站长的额度 —— 有前端 WebSocket 连着，
  * 后端就让全站探针 2 秒一报 —— 所以用假时钟把「什么时候断、什么时候才重连」钉住。
+ * 同一套假时钟也钉着快照同步的失败退避与多站部分失败（文件末尾「快照同步」）。
  */
 
 interface FakeConnection {
@@ -64,14 +65,15 @@ function setHidden(next: boolean) {
   document.dispatchEvent(new Event("visibilitychange"));
 }
 
-function snapshot(ids: string[] = ["node-a"]) {
+function snapshot(ids: string[] = ["node-a"], base = "https://backend.example") {
   return {
     servers: ids.map((id) => CfsmServerSchema.parse({ id, name: id, last_updated: Date.now() })),
-    baseByServerId: new Map(ids.map((id) => [id, "https://backend.example"] as const)),
+    baseByServerId: new Map(ids.map((id) => [id, base] as const)),
     sysConfig: {},
     regionStats: {},
     stats: {},
     partial: false,
+    failedBases: [] as string[],
   };
 }
 
@@ -82,6 +84,8 @@ async function loadStore() {
 }
 
 const syncCount = () => mocks.getServersSnapshot.mock.calls.length;
+const nodeIds = (store: Awaited<ReturnType<typeof loadStore>>) =>
+  store.getAllNodeMetaSnapshot().map((node) => node.uuid);
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -284,6 +288,72 @@ describe("详情页只订阅正在看的这一台", () => {
     expect(mocks.connections[0]!.ids).toEqual(["node-a", "node-b"]);
     // 全程同一条连接：没有重连，连接时限的计时也不会被进出详情页重置。
     expect(mocks.connections).toHaveLength(1);
+
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+  });
+});
+
+describe("快照同步", () => {
+  it("backs off once per failed sync, even when a poll tick joined it", async () => {
+    const startedAt = Date.now();
+    const callTimes: number[] = [];
+    mocks.getServersSnapshot.mockImplementation(() => {
+      callTimes.push(Date.now() - startedAt);
+      // 冷的 /api/servers 拖到 8 秒超时才失败：比 5 秒一拍的轮询长，途中那一拍会接上同一个请求。
+      return new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8_000));
+    });
+    const store = await loadStore();
+    const release = store.retainStore();
+
+    await vi.advanceTimersByTimeAsync(19_000);
+    // 第 8 秒失败 → 退避一拍（跳过第 10 秒）→ 第 15 秒重试。退避算了两次的话要拖到第 20 秒。
+    expect(callTimes).toEqual([0, 15_000]);
+
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it("keeps a site's nodes, socket and ping buffer when only that site misses a sync", async () => {
+    const siteA = "https://a.example";
+    const siteB = "https://b.example";
+    const bothSites = () => {
+      const a = snapshot(["node-a"], siteA);
+      const b = snapshot(["node-b"], siteB);
+      return {
+        ...a,
+        servers: [...a.servers, ...b.servers],
+        baseByServerId: new Map([...a.baseByServerId, ...b.baseByServerId]),
+      };
+    };
+    mocks.getServersSnapshot.mockImplementation(async () => bothSites());
+    const store = await loadStore();
+    const pingLive = await import("@/services/pingLiveStore");
+    const release = store.retainStore();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(nodeIds(store)).toEqual(["node-a", "node-b"]);
+    expect(mocks.connections).toHaveLength(2);
+    pingLive.recordPingSample("node-b", Date.now(), { ...EMPTY_CARRIER_PING, ct: 42 });
+
+    // B 站这一轮超时：快照里只剩 A 站的节点。
+    mocks.getServersSnapshot.mockImplementation(async () => ({
+      ...snapshot(["node-a"], siteA),
+      partial: true,
+      failedBases: [siteB],
+    }));
+    const syncs = syncCount();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(syncCount()).toBe(syncs + 1);
+    expect(nodeIds(store)).toEqual(["node-a", "node-b"]);
+    expect(mocks.connections.map((connection) => connection.closed)).toEqual([false, false]);
+    expect(pingLive.getPingHistorySnapshot("node-b")).toHaveLength(1);
+    expect(store.getStoreStatusSnapshot().partial).toBe(true);
+
+    // B 站恢复响应、节点确实删了：这一次才去掉。
+    mocks.getServersSnapshot.mockImplementation(async () => snapshot(["node-a"], siteA));
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(nodeIds(store)).toEqual(["node-a"]);
+    expect(mocks.connections.map((connection) => connection.closed)).toEqual([false, true]);
 
     release();
     await vi.advanceTimersByTimeAsync(0);

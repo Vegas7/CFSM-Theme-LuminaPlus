@@ -5,7 +5,7 @@ import type {
   SysConfig,
   TrafficTrendSample,
 } from "@/types/cfsm";
-import { getServersSnapshot } from "@/services/api";
+import { getServersSnapshot, type ServersSnapshot } from "@/services/api";
 import {
   emptyNodeMetrics,
   isServerOnline,
@@ -431,7 +431,6 @@ function updateTrafficTrendSeries(
 }
 
 let state: State = emptyState();
-const visibleNodeListeners = new Set<Listener>();
 const allNodesListeners = new Set<Listener>();
 const homeNodeSummaryListeners = new Set<Listener>();
 const nodeOnlineSummaryListeners = new Set<Listener>();
@@ -441,10 +440,6 @@ const nodeMetaListeners = new Map<string, Set<Listener>>();
 const nodeMetricsListeners = new Map<string, Set<Listener>>();
 const trafficTrendListeners = new Map<string, Set<Listener>>();
 let storeVersion = 0;
-let visibleNodeUuidsSnapshot: string[] = [];
-let visibleNodeUuidsSnapshotVersion = -1;
-let visibleNodeUuidsWithHiddenSnapshot: string[] = [];
-let visibleNodeUuidsWithHiddenSnapshotVersion = -1;
 let allNodeMetaSnapshot: NodeInfo[] = [];
 let allNodeMetaSnapshotVersion = -1;
 let homeNodeSummariesSnapshot: HomeNodeSummary[] = [];
@@ -514,7 +509,6 @@ function commit(next: State, touches: CommitTouches = {}) {
     hasAny(touches.meta) ||
     hasAny(touches.metrics);
 
-  if (touches.nodeList) emitListeners(visibleNodeListeners);
   if (touches.allNodes) emitListeners(allNodesListeners);
   if (homeTouched) emitListeners(homeNodeSummaryListeners);
   if (onlineTouched) {
@@ -648,6 +642,32 @@ function realtimeKnownUnavailable(): boolean {
   );
 }
 
+/**
+ * 多站部署下这次没返回的后端（超时、报错），它名下的节点沿用上一份数据，不当成被删掉。
+ *
+ * 快照里没有这些节点，直接照单全收的话，一次 8 秒超时就会：节点从首页消失、那个站的 WS 被关掉、
+ * 这些节点攒的延迟缓冲区被 `retainPingNodes` 清空 —— 下一次同步成功时节点回来了，缓冲区回不来。
+ * 沿用的只是上一份原始数据，在线状态照旧由 `refreshOnlineFlags` 按最后上报时间重算；那个站真把节点
+ * 删了，等它恢复响应后的第一次同步再去掉。
+ */
+function withUnreachableSiteServers(
+  snapshot: ServersSnapshot,
+): Pick<ServersSnapshot, "servers" | "baseByServerId"> {
+  if (snapshot.failedBases.length === 0) return snapshot;
+  const failedBases = new Set(snapshot.failedBases);
+  const servers = [...snapshot.servers];
+  const baseByServerId = new Map(snapshot.baseByServerId);
+  for (const uuid of state.order) {
+    if (baseByServerId.has(uuid)) continue;
+    const base = latestBaseByServerId.get(uuid);
+    const raw = state.rawByUuid[uuid];
+    if (base == null || raw == null || !failedBases.has(base)) continue;
+    servers.push(raw);
+    baseByServerId.set(uuid, base);
+  }
+  return { servers, baseByServerId };
+}
+
 function syncServers() {
   syncPromise ??= performServersSync().finally(() => {
     syncPromise = null;
@@ -671,7 +691,8 @@ async function performServersSync() {
     if (controller.signal.aborted) return;
 
     const now = Date.now();
-    const servers = sortServers(snapshot.servers);
+    const { servers: snapshotServers, baseByServerId } = withUnreachableSiteServers(snapshot);
+    const servers = sortServers(snapshotServers);
     const order = servers.map((server) => server.id);
     const touchedMeta = new Set<string>();
     const touchedMetrics = new Set<string>();
@@ -791,7 +812,7 @@ async function performServersSync() {
     hydrated = true;
     nodeInfoError = false;
     partialSites = snapshot.partial;
-    updateWsSubscriptions(snapshot.baseByServerId);
+    updateWsSubscriptions(baseByServerId);
 
     if (
       orderChanged ||
@@ -1303,8 +1324,21 @@ export function focusRealtimeNode(uuid: string): () => void {
 const BOOTSTRAP_MAX_BACKOFF_TICKS = 15;
 let bootstrapBackoffTicks = 0;
 let bootstrapSkipTicks = 0;
+let bootstrapPromise: Promise<void> | null = null;
 
-async function bootstrap() {
+/**
+ * 同一时刻只跑一个首屏同步。冷的 `/api/servers` 能拖到 8 秒超时，比 5 秒一拍的轮询还长：途中那一拍
+ * 再调一次会接上同一个在途请求（`syncServers` 共用 promise），失败时两边的 catch 各退避一次，
+ * 一次失败被当成两次、退避直接翻倍（首屏超时后第一次重试从第 15 秒拖到第 20 秒）。
+ */
+function bootstrap(): Promise<void> {
+  bootstrapPromise ??= runBootstrap().finally(() => {
+    bootstrapPromise = null;
+  });
+  return bootstrapPromise;
+}
+
+async function runBootstrap() {
   try {
     await syncServers();
     bootstrapBackoffTicks = 0;
@@ -1431,10 +1465,6 @@ function subscribeSet(listeners: Set<Listener>, listener: Listener): () => void 
   };
 }
 
-export function subscribeVisibleNodeUuids(listener: Listener): () => void {
-  return subscribeSet(visibleNodeListeners, listener);
-}
-
 export function subscribeAllNodes(listener: Listener): () => void {
   return subscribeSet(allNodesListeners, listener);
 }
@@ -1532,38 +1562,6 @@ export function getNodeTrafficTrendSnapshot(uuid: string): {
 } {
   const trend = state.trafficTrends[uuid] ?? EMPTY_TRAFFIC_TREND;
   return trend.snapshot;
-}
-
-export function getVisibleNodeUuidsSnapshot(includeHidden = false): string[] {
-  if (includeHidden) {
-    if (visibleNodeUuidsWithHiddenSnapshotVersion === storeVersion) {
-      return visibleNodeUuidsWithHiddenSnapshot;
-    }
-  } else if (visibleNodeUuidsSnapshotVersion === storeVersion) {
-    return visibleNodeUuidsSnapshot;
-  }
-
-  const next = state.order.filter((uuid) => {
-    const node = state.metaByUuid[uuid];
-    return Boolean(node) && (includeHidden || !node.hidden);
-  });
-
-  const previous = includeHidden
-    ? visibleNodeUuidsWithHiddenSnapshot
-    : visibleNodeUuidsSnapshot;
-  const value =
-    next.length === previous.length && next.every((uuid, index) => uuid === previous[index])
-      ? previous
-      : next;
-
-  if (includeHidden) {
-    visibleNodeUuidsWithHiddenSnapshot = value;
-    visibleNodeUuidsWithHiddenSnapshotVersion = storeVersion;
-  } else {
-    visibleNodeUuidsSnapshot = value;
-    visibleNodeUuidsSnapshotVersion = storeVersion;
-  }
-  return value;
 }
 
 export function getAllNodeMetaSnapshot(): NodeInfo[] {

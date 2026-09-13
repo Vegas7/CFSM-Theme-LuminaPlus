@@ -35,7 +35,7 @@ export interface PingLiveSample {
   /**
    * 这个样本在丢包加权平均里算几份。合并时才算出来，不落盘。
    *
-   * 两个来源疏密不同（窗口 2 分钟一格，本地跟着探测节奏、平稳时 2 分钟一个心跳），而丢包率是按**样本条数**
+   * 两个来源疏密不同（窗口约 6 分钟一格，本地跟着探测节奏、平稳时 2 分钟一个心跳），而丢包率是按**样本条数**
    * 加权的。不配权重的话，密的那段说话就大声几倍，卡片上的丢包率会被它拖着走。
    */
   weight?: number;
@@ -86,12 +86,14 @@ const BACKFILL_RUN_MIN_LENGTH = 4;
 /** 本地样本间隔推不出来时的兜底。 */
 const DEFAULT_LOCAL_CADENCE_MS = 40_000;
 /**
- * 权重的基数：一个「满格」（step 那么长的时间）算几份。
+ * 权重的单位：一份 = 15 秒，**只跟时长走、不跟窗口步长走**。
  *
- * `resolvePingSampleCounts` 会把权重取整，基数太小会被舍入带偏（1 : 1.5 取成 1 : 2，
- * 凭空多给一方三成），取 8 让常见的疏密比都能落在整数附近。
+ * `resolvePingSampleCounts` 会把权重取整，一份太粗就会被舍入带偏（1 : 1.5 取成 1 : 2，凭空多给一方三成）。
+ * 早先是「一格（窗口步长）八份」，窗口 2 分钟一格时恰好也是 15 秒一份；后端把窗口拉到 2 小时 20 个点
+ * （约 6 分钟一格）之后一份变成 45 秒，60 秒的丢包样本和 120 秒的心跳分别舍入成 1 份和 3 份（该是 1 : 2），
+ * 丢包样本整体吃亏，卡片丢包率偏低约四分之一。
  */
-const WEIGHT_SCALE = 8;
+const WEIGHT_UNIT_MS = 15_000;
 /**
  * 样本保留期。要盖住后端窗口的整段跨度再多留一点余量：后端 20 个点跨约 2 小时，最新一行
  * 本身还能旧到几分钟（后端 5 分钟服务端缓存），最老那行到手时常常已经接近满窗跨度。留太紧
@@ -398,7 +400,7 @@ function mergeWindowWithLocal(
  * 一次探测，平稳时每 2 分钟才记一个心跳，丢包那一次却会立刻记下来：按中点算，这个只代表 60 秒
  * 的丢包样本会拿到 90 秒的权重，丢包率凭空高一半（栽过一次，构造实测高估 71%）。
  *
- * 它同时抹平两处偏差：① 后端窗口 2 分钟一个点、本地样本疏密不定，按条数平均会偏向密的那段；
+ * 它同时抹平两处偏差：① 后端窗口一格好几分钟、本地样本疏密不定，按条数平均会偏向密的那段；
  * ② 采样规则本身对「值变了」放行更快，丢包样本更容易被记下。
  */
 function assignWeights(
@@ -409,9 +411,10 @@ function assignWeights(
   return samples.map((sample, index) => {
     const next = samples[index + 1];
     const span = (next ? next.time : now) - sample.time;
-    // 末尾那个样本和异常间隔都夹在合理范围内，免得一个孤点顶掉半张图的权重。
-    const bounded = Math.min(Math.max(span, stepMs / 8), stepMs * 4);
-    return { ...sample, weight: Math.max(1, Math.round((WEIGHT_SCALE * bounded) / stepMs)) };
+    // 异常长的间隔（多半是末尾那个样本之后、或中间断了一截）封顶，免得一个孤点顶掉半张图的权重；
+    // 太短的至少算一份（取整时兜住）。
+    const bounded = Math.min(span, stepMs * 4);
+    return { ...sample, weight: Math.max(1, Math.round(bounded / WEIGHT_UNIT_MS)) };
   });
 }
 

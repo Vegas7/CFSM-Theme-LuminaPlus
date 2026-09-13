@@ -6,12 +6,17 @@ import {
   getMe,
   getPingRecords,
   getPublic,
+  getServerApiBase,
   getServersSnapshot,
   normalizeHistoryHours,
   refreshPingHistory,
+  resetRecentThemeOptionsWrite,
   saveThemeOptions,
 } from "@/services/api";
-import { resetApiBaseCache } from "@/services/cfsm/config";
+import {
+  resetApiBaseCache,
+  subscribeTurnstileCredentialsCleared,
+} from "@/services/cfsm/config";
 import { DEFAULT_CARRIER_NAMES } from "@/services/cfsm/mappers";
 import { ApiRequestError } from "@/services/cfsm/http";
 import { getPingHistorySnapshot } from "@/services/pingLiveStore";
@@ -111,6 +116,7 @@ let fetchMock: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   resetApiBaseCache();
   clearHistoryCache();
+  resetRecentThemeOptionsWrite();
   window.localStorage.clear();
   document.head.innerHTML = "";
   fetchMock = vi.fn();
@@ -300,6 +306,23 @@ describe("saveThemeOptions", () => {
     expect(JSON.parse(init.body as string)).toEqual({ theme_options: { accent: "green" } });
   });
 
+  it("trusts its own write over a stale /api/config for a couple of minutes", async () => {
+    // 后端每个 isolate 各缓存 120 秒站点设置：保存后紧接着的读取可能拿回旧的一份。
+    window.localStorage.setItem("jwt_token", "token");
+    fetchMock.mockImplementation(async (url: string) =>
+      String(url).includes("/api/theme_options")
+        ? jsonResponse({ success: true, theme_options: { accent: "green" }, message: "updateSuccess" })
+        : jsonResponse({ site_title: "S", theme_options: { accent: "stale" } }),
+    );
+    const savedAt = Date.now();
+
+    await saveThemeOptions({ accent: "green" });
+    expect((await getPublic()).theme_settings).toEqual({ accent: "green" });
+
+    vi.spyOn(Date, "now").mockReturnValue(savedAt + 3 * 60_000);
+    expect((await getPublic()).theme_settings).toEqual({ accent: "stale" });
+  });
+
   it("drops the expired token on 401 (writes have no anonymous fallback)", async () => {
     window.localStorage.setItem("jwt_token", "stale");
     fetchMock.mockImplementation(jsonReply({ error: "Unauthorized", code: 401 }, 401));
@@ -315,6 +338,25 @@ describe("saveThemeOptions", () => {
 
     await expect(saveThemeOptions({ accent: "green" })).rejects.toBeInstanceOf(ApiRequestError);
     expect(window.localStorage.getItem("turnstile_verified")).toBeNull();
+  });
+});
+
+describe("Turnstile 凭证过期", () => {
+  it("tells the gate once when a 403 actually clears a credential", async () => {
+    // 首页轮询拿着过期凭证被拒：弹窗要靠这次通知去重新拉 config，缓存里那份还写着 verified: true。
+    window.localStorage.setItem("turnstile_verified", "expired-cred");
+    fetchMock.mockImplementation(jsonReply({ error: "Turnstile verification failed", code: 403 }, 403));
+    const onCleared = vi.fn();
+    const unsubscribe = subscribeTurnstileCredentialsCleared(onCleared);
+
+    await expect(getServersSnapshot()).rejects.toBeInstanceOf(ApiRequestError);
+    expect(onCleared).toHaveBeenCalledTimes(1);
+
+    // 凭证已经没了，之后每一次 403 都不再通知（否则 5 秒一次的轮询会跟着一直重拉 config）。
+    await expect(getServersSnapshot()).rejects.toBeInstanceOf(ApiRequestError);
+    expect(onCleared).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
   });
 });
 
@@ -361,6 +403,30 @@ describe("getServersSnapshot", () => {
     expect(snapshot.servers.map((server) => server.id)).toEqual(["node-a"]);
     expect(snapshot.baseByServerId.get("node-a")).toBe(ORIGIN);
     expect(snapshot.partial).toBe(true);
+    expect(snapshot.failedBases).toEqual(["https://backup.example.com"]);
+  });
+
+  it("routes detail requests for a duplicated id to the site whose card is shown", async () => {
+    const meta = document.createElement("meta");
+    meta.name = "apiBase";
+    meta.content = `${ORIGIN},https://backup.example.com`;
+    document.head.append(meta);
+    resetApiBaseCache();
+
+    fetchMock.mockImplementation(async () =>
+      jsonResponse({
+        servers: [serverPayload({ id: "node-dup" })],
+        stats: { total: 1, online: 1 },
+        regionStats: {},
+        sysConfig: {},
+      }),
+    );
+
+    const snapshot = await getServersSnapshot();
+
+    // 卡片与 WS 用第一个站的那台；详情 / 历史必须打到同一个站，不能被第二个站的同名 ID 覆盖。
+    expect(snapshot.baseByServerId.get("node-dup")).toBe(ORIGIN);
+    expect(getServerApiBase("node-dup")).toBe(ORIGIN);
   });
 
   it("throws when every api base fails", async () => {
@@ -439,6 +505,39 @@ describe("getPingRecords", () => {
     // 联通 null 且丢包不是正数 = 没取样，跳过；BD 负值 = 探测失败，要留着（图表靠它画断点、算丢包）。
     expect(records.map((record) => record.task_id)).toEqual([1, 3, 4]);
     expect(records.find((record) => record.task_id === 4)?.value).toBe(-1);
+  });
+
+  it("keeps timed-out probes out of the latency stats, but counts them as loss", async () => {
+    const base = Date.parse("2026-07-16T00:00:00Z");
+    fetchMock.mockImplementation(
+      jsonReply([
+        historyRow({ timestamp: base, ping_ct: 20 }),
+        historyRow({ timestamp: base + 30_000, ping_ct: 30 }),
+        // 最后一轮整轮超时：详情页线路按钮上的「当前」曾经因此显示成「-1.0 ms」。
+        historyRow({ timestamp: base + 60_000, ping_ct: null, loss_ct: 100 }),
+      ]),
+    );
+
+    const { stats } = await getPingRecords("node-a", 1);
+    const ct = stats?.find((stat) => stat.taskId === 1);
+
+    expect(ct).toMatchObject({ latest: 30, min: 20, max: 30, avg: 25, valid: 2, total: 3 });
+    expect(ct?.loss).toBeCloseTo(100 / 3, 5);
+  });
+
+  it("still lists a line whose every probe timed out", async () => {
+    fetchMock.mockImplementation(jsonReply([historyRow({ ping_ct: null, loss_ct: 100 })]));
+
+    const { stats } = await getPingRecords("node-a", 1);
+
+    expect(stats?.find((stat) => stat.taskId === 1)).toMatchObject({
+      latest: null,
+      min: null,
+      avg: null,
+      valid: 0,
+      total: 1,
+      loss: 100,
+    });
   });
 
   it("drops lines the backend marks as unconfigured with false, new ones included", async () => {

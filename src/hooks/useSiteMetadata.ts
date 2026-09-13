@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { usePublicConfig } from "@/hooks/usePublicConfig";
+import { getStaticSiteTitle } from "@/services/cfsm/config";
 import { THEME_FALLBACK_TITLE } from "@/utils/themeMeta";
 
-// 站点标题由后台外观设置提供；这里只是它还没到达时的占位。
+// 站点标题由后台外观设置提供（纯静态部署可用 TITLE 指定）；这里只是它还没到达时的占位。
 const FALLBACK_TITLE = THEME_FALLBACK_TITLE;
 const FALLBACK_DESCRIPTION = "";
 
@@ -17,7 +18,8 @@ export function useSiteMetadata() {
   const { data: config } = usePublicConfig();
 
   useEffect(() => {
-    const siteName = config?.sitename?.trim() || FALLBACK_TITLE;
+    // 纯静态部署指定过 TITLE 就用它，否则挂载后会被后台站点标题盖掉、只在首屏闪一下。
+    const siteName = getStaticSiteTitle() || config?.sitename?.trim() || FALLBACK_TITLE;
     const description = config?.description?.trim() || FALLBACK_DESCRIPTION;
 
     document.title = siteName;

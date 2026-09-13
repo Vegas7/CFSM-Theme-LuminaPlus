@@ -72,7 +72,7 @@ export function useNodeCardModel(
     includeMultiPing &&
     showThreeNetDetails &&
     enableHomepageMultiPing &&
-    // 条数不再写死三条：选 1~4 条都算开着，选 0 条才回退单线路。
+    // 条数不再写死三条：选 1~8 条都算开着，选 0 条才回退单线路。
     isHomepageMultiPingConfigured(homepageMultiPingTaskIds);
   const windowPing = useNodePingOverview(uuid, !multiPingActive);
   const windowPingLines = useNodePingOverviewLines(uuid, multiPingActive);

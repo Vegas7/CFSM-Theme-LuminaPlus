@@ -484,6 +484,25 @@ describe("采样与计权的准确度", () => {
     expect(Math.abs(loss - truth) / truth).toBeLessThan(0.15);
   });
 
+  it("和后端 6 分钟一格的窗口合并后，丢包率仍按时间算", () => {
+    // 线上窗口是 2 小时 20 个点（约 6 分钟一格）：前一小时只有窗口（不丢包），后一小时是本地实测。
+    // 权重的份数曾经按「一格八份」算，格子一宽到 6 分钟，60 秒的丢包样本和 120 秒的心跳就分别被
+    // 舍入成 1 份和 3 份（该是 1 : 2），丢包样本整体吃亏：这个构造下算出 0.95%，真值 1.25%。
+    const truthLastHour = feedProbes();
+    seedPingHistory(
+      "node-a",
+      Array.from({ length: 20 }, (_, index) => ({
+        time: NOW - (19 - index) * 6 * 60_000,
+        // 延迟逐格不同：一模一样的连续格子会被当成后端复印件整段丢掉（见 dropBackfilledRuns）。
+        ping: ping({ ct: 200 + index, lossCt: 0 }),
+      })),
+    );
+    const truth = truthLastHour / 2;
+    const loss = buildPingOverviewItem("node-a", 1, getPingHistorySnapshot("node-a")).loss ?? 0;
+
+    expect(Math.abs(loss - truth) / truth).toBeLessThan(0.15);
+  });
+
   it("重复帧不进缓冲区：一小时的样本数与探测次数同量级", () => {
     feedProbes();
 

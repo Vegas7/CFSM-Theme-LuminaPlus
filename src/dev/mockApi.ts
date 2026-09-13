@@ -338,6 +338,9 @@ function buildHistory(serverId: string, hours: number) {
   return rows;
 }
 
+/** 「保存到后端」写进来的站点主题配置，只存在内存里（刷新页面就没了），够本地走一遍发布流程。 */
+let mockThemeOptions: Record<string, unknown> = {};
+
 export function installDevMockApi() {
   const nativeFetch = window.fetch.bind(window);
 
@@ -357,6 +360,19 @@ export function installDevMockApi() {
         headers: { "Content-Type": "application/json" },
       });
 
+    if (url.pathname === "/api/theme_options" && init?.method?.toUpperCase() === "POST") {
+      const body = JSON.parse(String(init.body ?? "{}")) as { theme_options?: unknown };
+      const next = body.theme_options;
+      if (!next || typeof next !== "object" || Array.isArray(next)) {
+        return new Response(JSON.stringify({ error: "invalidThemeOptionsFormat", code: 400 }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      mockThemeOptions = next as Record<string, unknown>;
+      return json({ success: true, theme_options: mockThemeOptions, message: "updateSuccess" });
+    }
+
     if (url.pathname === "/api/config") {
       // 本地验「登录站长才看得到的东西」（版本更新提醒等）：localStorage 里放任意 jwt_token 就当已登录。
       // 真后端也是这样：最新版本号只对登录请求下发。
@@ -373,7 +389,7 @@ export function installDevMockApi() {
         turnstile_site_key: "",
         site_title: "Mock Monitor",
         display_mode: "bar",
-        theme_options: {},
+        theme_options: mockThemeOptions,
         verified: false,
         turnstile_verified: null,
         long_history_points: 120,

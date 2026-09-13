@@ -196,7 +196,7 @@ export function normalizeThemeSettings(
   settings: (ThemeSettings & Record<string, unknown>) | null | undefined,
 ): ResolvedThemeSettings {
   // 没配过就给电信/联通/移动三条线路：多线路模式默认开着，一条任务 id 都没有会静默退回
-  // 单线路，站长会以为开关没生效。显式配过就尊重原值 —— 条数由站长定（1~4 条都算配好了），
+  // 单线路，站长会以为开关没生效。显式配过就尊重原值 —— 条数由站长定（1~8 条都算配好了），
   // 只有空数组才回退单线路。
   const homepageMultiPingTaskIds =
     settings?.homepageMultiPingTaskIds == null

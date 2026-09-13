@@ -675,7 +675,7 @@ export interface PublicConfig {
   /** 后台「默认外观」换算成主题的外观值；老后端不下发时缺席。见 `resolvePreferredAppearance`。 */
   preferredAppearance?: "system" | "light" | "dark";
   /**
-   * 四条线路的显示名：后端 `custom_*_name` 逐条覆盖，缺的沿用主题默认名。
+   * 各条线路的显示名：后端 `custom_*_name` / `node_N_name` 逐条覆盖，缺的沿用主题默认名。
    * 后端没下发任何一条时是 `DEFAULT_CARRIER_NAMES` 那个常量本身（引用稳定）。
    */
   carrierNames: CarrierNames;

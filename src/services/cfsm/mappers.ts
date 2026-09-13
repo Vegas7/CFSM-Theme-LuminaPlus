@@ -27,8 +27,8 @@ const GIB = 1024 * 1024 * 1024;
 export const ONLINE_THRESHOLD_MS = 300_000;
 
 /**
- * 四条线路的默认显示名。站长可以在后端改名（`/api/config` 的 `custom_ct_name` 等，
- * 后端后加的字段），老后端不下发时就用这里的默认值 —— 所以四条线路的 id / key 是固定的，
+ * 各条线路的默认显示名。站长可以在后端改名（`/api/config` 的 `custom_ct_name`、`node_1_name` 等，
+ * 后端后加的字段），老后端不下发时就用这里的默认值 —— 所以线路的 id / key 是固定的，
  * 只有名字可变。
  */
 export type { CarrierNames };
@@ -71,9 +71,8 @@ export function resolveCarrierNames(
  * 后端固定的探测线路表，没有可配置的 ping 任务。id 就是线路序号（1..N），与 `CARRIER_KEYS`
  * 同序 —— 设置页存的 `homepageMultiPingTaskIds` / `homepageDefaultPingTaskId` 都是这个 id。
  *
- * `field` / `lossField` 是 `/api/servers` 与历史行里的列名。**注意历史接口目前只有前四条**
- * （2026-09-07 实测 `/api/history/all` 的行里没有 `ping_node_*`），所以 node_1..4 在详情页
- * Ping 图表上没有数据点 —— `getPingRecords` 按实际观测到的线路过滤，不会画空线。
+ * `field` / `lossField` 是 `/api/servers` 与历史行里的列名。历史接口 2026-09-09 起八条都有
+ * （之前只有前四条）；没配探测目标的线路读出来是空的，`getPingRecords` 按实际观测到的线路过滤，不会画空线。
  */
 export const CARRIER_TASKS = [
   { id: 1, key: "ct", name: DEFAULT_CARRIER_NAMES.ct, field: "ping_ct", lossField: "loss_ct" },
@@ -643,7 +642,7 @@ export function historyRowsToPingSamples(rows: HistoryRow[]): PingLiveSample[] {
   for (const row of rows) {
     const time = normalizeTimestamp(row.timestamp);
     if (time <= 0) continue;
-    // 历史行目前只有前四条线路的列，node_1..4 读出来是 null（实测，见 CARRIER_TASKS 注释）。
+    // 没配探测目标的线路读出来是 null（后端下发 false，见 CARRIER_TASKS 注释）。
     const ping = carrierPingFrom(row as unknown as Record<string, unknown>);
     out.push({ time, ping });
   }
