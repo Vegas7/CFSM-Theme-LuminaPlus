@@ -85,6 +85,8 @@ interface NodeTrafficTrend {
 
 /** WebSocket 断开时的轮询节奏。 */
 const POLL_REFRESH_INTERVAL_MS = 5_000;
+/** 新建的 WebSocket 给一个轮询周期握手，期间不算「连不上」，见 {@link realtimeKnownUnavailable}。 */
+const WS_CONNECT_GRACE_MS = POLL_REFRESH_INTERVAL_MS;
 /**
  * WebSocket 正常时仍定期全量对齐，用于捕获元数据变更与节点增删。
  *
@@ -631,13 +633,19 @@ function sortServers(servers: CfsmServer[]) {
 }
 
 /**
- * WS 是否**已经确定**不可用：建过连接但一条都没连上。
+ * WS 是否**已经确定**不可用：建过连接、过了握手宽限期，还是一条都没连上。
  *
  * 首屏（还没建连，`connectionsByBase` 是空的）返回 false —— 那时该等 WS，不是拿快照的
  * 陈旧速率顶上；只有真的连不上、靠 5 秒轮询兜底时，快照才是唯一的数据源。
+ * 刚建、还在握手的连接同理：切回前台时连接和快照是同时发出去的，快照先回来很常见
+ * （2026-09-13 线上实测快照 1.0 秒、WS 握手 1.4 秒），这时认快照速率，顶部带宽会被旧值顶一下。
  */
 function realtimeKnownUnavailable(): boolean {
-  return connectionsByBase.size > 0 && connectedBases.size === 0;
+  return (
+    connectionsByBase.size > 0 &&
+    connectedBases.size === 0 &&
+    Date.now() - connectionsCreatedAt >= WS_CONNECT_GRACE_MS
+  );
 }
 
 function syncServers() {
@@ -1087,6 +1095,8 @@ function updateSysConfigSnapshot(next: SysConfig): boolean {
 
 const connectionsByBase = new Map<string, WsConnection>();
 const connectedBases = new Set<string>();
+/** 这一轮连接从何时开始建（从一条都没有到建起第一条），握手宽限期从这里算。 */
+let connectionsCreatedAt = 0;
 
 /** 最近一次快照给出的「节点 → 所属后端」：切换详情页焦点时照它重排订阅，不必等下一次同步。 */
 let latestBaseByServerId = new Map<string, string>();
@@ -1115,7 +1125,7 @@ function setRealtimeConnected(next: boolean) {
 
 function updateWsSubscriptions(baseByServerId: Map<string, string>) {
   latestBaseByServerId = baseByServerId;
-  // 后台暂停 / 连接到时限期间不建连接：快照照常合并，实时连接等恢复时由那次同步重建。
+  // 后台暂停 / 连接到时限期间不建连接：快照照常合并，实时连接等恢复时由 resumeRealtime 重建。
   if (realtimePaused()) return;
   const idsByBase = new Map<string, string[]>();
   for (const [serverId, base] of baseByServerId) {
@@ -1134,6 +1144,7 @@ function updateWsSubscriptions(baseByServerId: Map<string, string>) {
       existing.updateIds(ids);
       continue;
     }
+    if (connectionsByBase.size === 0) connectionsCreatedAt = Date.now();
     connectionsByBase.set(
       base,
       createWsConnection(base, ids, {
@@ -1201,12 +1212,19 @@ function suspendRealtime() {
 }
 
 /**
- * 恢复实时：先补一次 `/api/servers`，同步结束时 updateWsSubscriptions 会按最新的表重建连接
- * （后端文档的建议：重新可见时先补 REST 再连 WS）。补不上时 5 秒轮询会接着试。
+ * 恢复实时：**立刻按暂停前那份节点表把连接建回去，同时补一次 `/api/servers`**。
+ *
+ * 暂停期间没有前端连着，后端让全站探针退回 60 秒一报，要等前端的订阅到了才通知探针提速（新版探针收到就补报）。
+ * 早先照后端文档「先补 REST 再连 WS」串行做，连接得等快照回来才建，而 `/api/servers` 冷的时候很慢 ——
+ * 2026-09-13 线上实测：先快照后连接，切回后 6.4 秒才有数据；连接先走 1.7 秒。快照还测到过 8.3 秒，
+ * 超过 SERVERS_REQUEST_TIMEOUT_MS 整次作废，连接要等下一次轮询成功才建。内置主题也是切回来直接重连。
+ * 快照回来时 updateWsSubscriptions 在同一条连接上改 ids（节点增删），不重连；快照比实时值旧时
+ * performServersSync 只取 WS 不下发的字段。补不上时 5 秒轮询会接着试。
  * **只拉 `/api/servers`，绝不碰 `/api/history/all`** —— 首页硬约束：历史只能由人点刷新触发。
  */
 function resumeRealtime() {
   if (!started || realtimePaused()) return;
+  if (latestBaseByServerId.size > 0) updateWsSubscriptions(latestBaseByServerId);
   lastFullRefreshAt = Date.now();
   void syncServers().catch(() => {});
 }

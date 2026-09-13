@@ -18,6 +18,8 @@ interface FakeConnection {
 const mocks = vi.hoisted(() => ({
   connections: [] as FakeConnection[],
   getServersSnapshot: vi.fn(),
+  /** false 时新建的连接一直停在握手中，不回报可用。 */
+  autoOpen: true,
 }));
 
 vi.mock("@/services/cfsm/wsClient", () => ({
@@ -37,9 +39,11 @@ vi.mock("@/services/cfsm/wsClient", () => ({
       },
     };
     mocks.connections.push(connection);
-    queueMicrotask(() => {
-      if (!connection.closed) handlers.onAvailabilityChange(true);
-    });
+    if (mocks.autoOpen) {
+      queueMicrotask(() => {
+        if (!connection.closed) handlers.onAvailabilityChange(true);
+      });
+    }
     return connection;
   },
 }));
@@ -82,6 +86,7 @@ const syncCount = () => mocks.getServersSnapshot.mock.calls.length;
 beforeEach(() => {
   vi.useFakeTimers();
   hidden = false;
+  mocks.autoOpen = true;
   mocks.connections.length = 0;
   mocks.getServersSnapshot.mockReset();
   mocks.getServersSnapshot.mockImplementation(async () => snapshot());
@@ -113,12 +118,81 @@ describe("页面进后台", () => {
     expect(syncCount()).toBe(syncsBeforeReturn);
     expect(mocks.connections).toHaveLength(1);
 
-    // 切回前台：先补一次快照，再重建连接。
+    // 切回前台：重建连接，并补一次快照。
     setHidden(false);
     await vi.advanceTimersByTimeAsync(0);
     expect(syncCount()).toBe(syncsBeforeReturn + 1);
     expect(mocks.connections).toHaveLength(2);
     expect(mocks.connections[1]!.closed).toBe(false);
+
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it("reconnects on return without waiting for the snapshot", async () => {
+    const store = await loadStore();
+    const release = store.retainStore();
+    await vi.advanceTimersByTimeAsync(0);
+
+    setHidden(true);
+    await vi.advanceTimersByTimeAsync(store.HIDDEN_REALTIME_PAUSE_DELAY_MS);
+    expect(mocks.connections[0]!.closed).toBe(true);
+
+    // 冷的 /api/servers 要好几秒（线上实测 2~8 秒），而探针要等订阅到了才从 60 秒一报提速：
+    // 连接排在快照后面，切回来就一直是旧数据。
+    let resolveSnapshot!: (value: ReturnType<typeof snapshot>) => void;
+    mocks.getServersSnapshot.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSnapshot = resolve;
+        }),
+    );
+    setHidden(false);
+    expect(mocks.connections).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getStoreStatusSnapshot().realtimeConnected).toBe(true);
+
+    // 快照回来多了一台节点：在同一条连接上改订阅，不再重连。
+    resolveSnapshot(snapshot(["node-a", "node-b"]));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(mocks.connections).toHaveLength(2);
+    expect(mocks.connections[1]!.ids).toEqual(["node-a", "node-b"]);
+
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it("ignores the snapshot's stale rate while the new connection is still handshaking", async () => {
+    const serverAt = (netInSpeed: number, lastUpdated: number) => ({
+      ...snapshot(),
+      servers: [
+        CfsmServerSchema.parse({
+          id: "node-a",
+          name: "node-a",
+          last_updated: lastUpdated,
+          net_in_speed: netInSpeed,
+        }),
+      ],
+    });
+    mocks.getServersSnapshot.mockImplementation(async () => serverAt(100, Date.now()));
+    const store = await loadStore();
+    const release = store.retainStore();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getNodeMetricsSnapshot("node-a")?.netDown).toBe(100);
+
+    setHidden(true);
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+
+    // 切回前台时连接还没握上手，快照先回来：它的速率是 30 秒前的，不能当现在显示。
+    mocks.autoOpen = false;
+    mocks.getServersSnapshot.mockImplementation(async () => serverAt(9_999, Date.now() - 30_000));
+    setHidden(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(store.getNodeMetricsSnapshot("node-a")?.netDown).toBe(100);
+
+    // 过了握手宽限期还是连不上，就是真连不上：轮询兜底时快照是唯一的数据源，照用。
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(store.getNodeMetricsSnapshot("node-a")?.netDown).toBe(9_999);
 
     release();
     await vi.advanceTimersByTimeAsync(0);
