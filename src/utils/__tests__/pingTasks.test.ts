@@ -3,6 +3,7 @@ import { CARRIER_TASKS } from "@/services/cfsm/mappers";
 import {
   DEFAULT_HOMEPAGE_PING_TASK_ID,
   HOMEPAGE_MULTI_PING_MAX_COUNT,
+  assignHomepageMultiPingTask,
   resolveDefaultHomepagePingTaskId,
   isHomepageMultiPingConfigured,
   normalizeHomepageMultiPingTaskIds,
@@ -68,6 +69,23 @@ describe("homepage ping task bindings", () => {
     expect(normalizeHomepageMultiPingTaskIds([8, 7, 6, 5, 4, 3, 2, 1, 9])).toEqual([
       8, 7, 6, 5, 4, 3, 2, 1,
     ]);
+  });
+
+  it("swaps two slots when the picked line is already used by another slot", () => {
+    // 线路 1 选了线路 3 正在用的「移动」：两条互换，不会出现两条都是移动。
+    expect(assignHomepageMultiPingTask([1, 2, 3], 0, 3)).toEqual([3, 2, 1]);
+    // 选一条没在用的：只换这一格。
+    expect(assignHomepageMultiPingTask([1, 2, 3], 1, 5)).toEqual([1, 5, 3]);
+  });
+
+  it("leaves the selection alone for a no-op pick or a slot that does not exist", () => {
+    const taskIds = [1, 2, 3];
+    expect(assignHomepageMultiPingTask(taskIds, 2, 3)).toEqual([1, 2, 3]);
+    expect(assignHomepageMultiPingTask(taskIds, 3, 5)).toEqual([1, 2, 3]);
+    expect(assignHomepageMultiPingTask(taskIds, -1, 5)).toEqual([1, 2, 3]);
+    // 返回的是拷贝，不改调用方的数组。
+    expect(assignHomepageMultiPingTask(taskIds, 0, 3)).not.toBe(taskIds);
+    expect(taskIds).toEqual([1, 2, 3]);
   });
 
   it("treats any non-empty selection as configured (1 line is valid)", () => {

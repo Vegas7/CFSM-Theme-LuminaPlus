@@ -65,6 +65,24 @@ export function normalizeHomepageMultiPingTaskIds(value: unknown): number[] {
   return normalized;
 }
 
+/**
+ * 把多线路的第 `slot` 条换成 `taskId`。选的线路已经在别的槽位时**两条互换**，不会选出两条一样的线路
+ * —— 和首页卡片上点线路名换线路同一个口径（见 pingLineOverrides 的 `switchPingLine`）。
+ * 槽位越界时原样返回（拷贝）。
+ */
+export function assignHomepageMultiPingTask(
+  taskIds: readonly number[],
+  slot: number,
+  taskId: number,
+): number[] {
+  const next = [...taskIds];
+  if (!Number.isInteger(slot) || slot < 0 || slot >= next.length) return next;
+  const shownAt = next.indexOf(taskId);
+  if (shownAt >= 0 && shownAt !== slot) next[shownAt] = next[slot]!;
+  next[slot] = taskId;
+  return next;
+}
+
 export function normalizeHomepagePingTaskBindings(
   value: unknown,
 ): HomepagePingTaskBindings {

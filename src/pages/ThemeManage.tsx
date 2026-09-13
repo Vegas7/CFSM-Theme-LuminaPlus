@@ -70,6 +70,7 @@ import {
 import {
   HOMEPAGE_MULTI_PING_MAX_COUNT,
   HOMEPAGE_MULTI_PING_MIN_COUNT,
+  assignHomepageMultiPingTask,
   isHomepageMultiPingConfigured,
   normalizeHomepageMultiPingTaskIds,
   normalizeHomepagePingTaskBindings,
@@ -763,10 +764,10 @@ export function ThemeManage() {
       commitMultiPingTaskIds((ids) => {
         if (rawValue === "") {
           ids.splice(slot, 1);
-        } else {
-          ids[slot] = Number(rawValue);
+          return ids;
         }
-        return ids;
+        // 选了别的槽位已经在用的线路：两条互换，而不是禁用那个选项、逼站长先把那边改掉。
+        return assignHomepageMultiPingTask(ids, slot, Number(rawValue));
       });
     },
     [commitMultiPingTaskIds],
@@ -1943,7 +1944,9 @@ export function ThemeManage() {
                     放在标签行右端时会紧贴下一列的标签，看着像是下一条线路的按钮。 */}
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {draft.homepageMultiPingTaskIds.map((selectedTaskId, slot) => (
-                    <div key={`${slot}-${selectedTaskId}`} className="min-w-0">
+                    // key 用槽位号、不带线路 id：互换会同时改两个槽位，带 id 的话两个都重新挂载，
+                    // 刚操作的下拉框丢焦点，键盘上下切线路切一下就断。
+                    <div key={slot} className="min-w-0">
                       <label
                         htmlFor={`multi-ping-slot-${slot}`}
                         className="mb-1.5 block text-[11px] font-medium text-[var(--text-secondary)]"
@@ -1964,18 +1967,17 @@ export function ThemeManage() {
                               任务 #{selectedTaskId}（当前不可用）
                             </option>
                           )}
-                          {sortedTasks.map((task) => (
-                            <option
-                              key={task.id}
-                              value={task.id}
-                              disabled={
-                                task.id !== selectedTaskId &&
-                                draft.homepageMultiPingTaskIds.includes(task.id)
-                              }
-                            >
-                              {task.name || `任务 #${task.id}`}
-                            </option>
-                          ))}
+                          {sortedTasks.map((task) => {
+                            const usedAt = draft.homepageMultiPingTaskIds.indexOf(task.id);
+                            const swapsWith = task.id !== selectedTaskId ? usedAt : -1;
+                            return (
+                              <option key={task.id} value={task.id}>
+                                {`${task.name || `任务 #${task.id}`}${
+                                  swapsWith >= 0 ? `（与线路 ${swapsWith + 1} 互换）` : ""
+                                }`}
+                              </option>
+                            );
+                          })}
                         </select>
                         <button
                           type="button"
