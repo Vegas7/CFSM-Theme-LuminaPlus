@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getSiteThemeSyncStatus,
+  hasUnsyncedLocalChanges,
   resetSiteThemeSyncForTest,
   retrySiteThemeSync,
   SITE_THEME_SYNC_DEBOUNCE_MS,
@@ -230,5 +231,26 @@ describe("登录站长的改动自动同步到后端", () => {
 
     expect(mocks.saveThemeOptions).not.toHaveBeenCalled();
     expect(getLocalThemeSettings()).toEqual({ desktopNodeViewMode: "compact" });
+  });
+});
+
+describe("hasUnsyncedLocalChanges（站长的「改用后端配置」什么时候出现）", () => {
+  it("同步失败、改动留在本机时出现", () => {
+    expect(hasUnsyncedLocalChanges({ hasLocalChanges: true, phase: "error", waiting: false })).toBe(true);
+  });
+
+  it("自动同步上线前存在本机的旧设置也算", () => {
+    expect(hasUnsyncedLocalChanges({ hasLocalChanges: true, phase: "idle", waiting: false })).toBe(true);
+  });
+
+  it("正在同步时不出现，免得每改一次就闪一下", () => {
+    for (const phase of ["pending", "saving"] as const) {
+      expect(hasUnsyncedLocalChanges({ hasLocalChanges: true, phase, waiting: false })).toBe(false);
+    }
+    expect(hasUnsyncedLocalChanges({ hasLocalChanges: true, phase: "error", waiting: true })).toBe(false);
+  });
+
+  it("本机没有改动就不出现", () => {
+    expect(hasUnsyncedLocalChanges({ hasLocalChanges: false, phase: "error", waiting: false })).toBe(false);
   });
 });

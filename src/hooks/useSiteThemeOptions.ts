@@ -271,6 +271,26 @@ export function startSiteThemeAutoSync(): () => void {
   };
 }
 
+/**
+ * 登录站长这台设备上有没有「没同步上去的本机改动」—— 设置页据此决定给不给「改用后端配置」。
+ *
+ * 正在同步（等防抖、请求在路上、表单还没到自动保存）时不算：那时本机本来就有改动，按钮会在每次编辑时
+ * 闪出来又消失。剩下的就是同步失败留在本机的，和自动同步上线前存在本机、还没随编辑发出去的旧设置。
+ */
+export function hasUnsyncedLocalChanges({
+  hasLocalChanges,
+  phase,
+  waiting,
+}: {
+  hasLocalChanges: boolean;
+  phase: SiteThemeSyncPhase;
+  /** 设置页表单改了、还没存进本机。 */
+  waiting: boolean;
+}): boolean {
+  if (!hasLocalChanges || waiting) return false;
+  return phase !== "pending" && phase !== "saving";
+}
+
 /** 失败后手动重试（登录态失效重新登录回来、完成人机验证之后）。 */
 export function retrySiteThemeSync(): void {
   if (!getJwtToken()) return;

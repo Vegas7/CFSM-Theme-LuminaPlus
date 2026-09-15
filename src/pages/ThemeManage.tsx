@@ -38,6 +38,7 @@ import { useHourlyClock } from "@/hooks/useClock";
 import { useAllPingLineOverrides } from "@/hooks/usePingOverview";
 import {
   cancelSiteThemeSync,
+  hasUnsyncedLocalChanges,
   useCanSyncSiteTheme,
   useSiteThemeOptions,
   useSiteThemeSyncStatus,
@@ -1217,7 +1218,7 @@ export function ThemeManage() {
    *
    * 工具栏的「改用后端配置」按钮走这里：本机存过的设置只要还在，后端改的配置就永远压不过来
    * （合并规则是本地覆盖优先），必须先把本地那份丢掉。登录站长的改动平时已经自动同步、本机是空的，
-   * 这个按钮只在同步失败、改动还留在本机时有用。
+   * 所以只在本机还有没同步上的改动时才给这个按钮（见 hasUnsyncedLocalChanges）。
    */
   const handleRestoreSiteDefaults = () => {
     // 登录站长同步失败时，本机改动会一直等着重试；丢掉本机就不该再发出去。
@@ -1233,6 +1234,14 @@ export function ThemeManage() {
     setMessage("已丢弃本机设置，改用后端当前的配置");
     setError(null);
   };
+
+  // 表单改了、还没到自动保存那一下（登录站长）。
+  const draftAwaitingAutoSave = draftSignature !== sourceSignature;
+  const siteHasUnsyncedChanges = hasUnsyncedLocalChanges({
+    hasLocalChanges: Object.keys(localThemeSettings).length > 0 || localLineOverrideCount > 0,
+    phase: siteSync.phase,
+    waiting: draftAwaitingAutoSave,
+  });
 
   if (configLoading) {
     return (
@@ -1290,26 +1299,36 @@ export function ThemeManage() {
             返回首页
           </Link>
           <div className="theme-manage-toolbar-actions">
-            <button
-              type="button"
-              onClick={handleReset}
-              disabled={!isDirty || saving}
-              className="theme-manage-button"
-              title="撤销未保存的改动，回到当前生效的设置"
-            >
-              <RefreshCw size={14} />
-              <span>重置</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleRestoreSiteDefaults}
-              disabled={saving}
-              className="theme-manage-button"
-              title="放弃本机保存的设置（含配色、首页卡片上换过的线路），改用后端当前的配置（后台「外观设置 → 主题自定义配置」下发的那份）"
-            >
-              <CloudDownload size={14} />
-              <span>改用后端配置</span>
-            </button>
+            {/* 登录站长停手就自动保存，「还没保存的改动」几乎不存在；这个按钮又退不回已经同步上去的改动，
+                留着只会让人以为能撤销。填错了（不自动保存）把那一项改对即可。 */}
+            {!canSaveToSite && (
+              <button
+                type="button"
+                onClick={handleReset}
+                disabled={!isDirty || saving}
+                className="theme-manage-button"
+                title="撤销未保存的改动，回到当前生效的设置"
+              >
+                <RefreshCw size={14} />
+                <span>重置</span>
+              </button>
+            )}
+            {(!canSaveToSite || siteHasUnsyncedChanges) && (
+              <button
+                type="button"
+                onClick={handleRestoreSiteDefaults}
+                disabled={saving}
+                className="theme-manage-button"
+                title={
+                  canSaveToSite
+                    ? "放弃这台设备上还没同步到后端的改动（含配色、首页卡片上换过的线路），改用后端当前的配置"
+                    : "放弃本机保存的设置（含配色、首页卡片上换过的线路），改用后端当前的配置（后台「外观设置 → 主题自定义配置」下发的那份）"
+                }
+              >
+                <CloudDownload size={14} />
+                <span>改用后端配置</span>
+              </button>
+            )}
             {!canSaveToSite && (
               <button
                 type="button"
@@ -1326,7 +1345,7 @@ export function ThemeManage() {
                 phase={siteSync.phase}
                 invalid={isDirty && (draftCostRateApiUrlInvalid || draftMultiPingInvalid)}
                 // 表单停手等自动保存的那一小段也算「同步中」，不然会先闪一下「已同步」。
-                waiting={draftSignature !== sourceSignature}
+                waiting={draftAwaitingAutoSave}
               />
             ) : (
               <button
