@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Cpu,
   MemoryStick,
@@ -9,9 +9,7 @@ import {
   ArrowUp,
   ArrowDown,
   RotateCcw,
-  CloudUpload,
 } from "lucide-react";
-import { Spinner } from "@/components/ui/Spinner";
 import { usePreferences } from "@/hooks/usePreferences";
 import {
   METRIC_COLOR_GROUPS,
@@ -20,9 +18,7 @@ import {
   useMetricColorsEditor,
   type MetricColorKey,
 } from "@/hooks/useMetricColors";
-import { useSiteThemeOptions } from "@/hooks/useSiteThemeOptions";
-import { ApiRequestError } from "@/services/api";
-import { getJwtToken } from "@/services/cfsm/config";
+import { useCanSyncSiteTheme } from "@/hooks/useSiteThemeOptions";
 
 const DARK_DEPTH_PRESETS = [
   { value: 0, label: "灰黑", title: "当前默认色" },
@@ -45,6 +41,7 @@ const ICONS: Record<MetricColorKey, typeof Cpu> = {
 };
 
 export function MetricColorPicker({ hidden = false }: { hidden?: boolean }) {
+  const syncsToSite = useCanSyncSiteTheme();
   const {
     colors,
     darkDepth,
@@ -55,39 +52,8 @@ export function MetricColorPicker({ hidden = false }: { hidden?: boolean }) {
     resetAll,
     hasLocalOverrides,
     saveError,
-  } = useMetricColorsEditor();
+  } = useMetricColorsEditor({ syncsToSite });
   const { resolvedAppearance } = usePreferences();
-
-  // 登录站长可把当前配色（连同其它本机设置）一并写到后端，成为所有设备的默认值。
-  // 发的是和设置页同一份站点快照（useSiteThemeOptions），不是只有配色。
-  const { publish } = useSiteThemeOptions();
-  const canSaveToBackend = useMemo(() => Boolean(getJwtToken()), []);
-  const [savingToBackend, setSavingToBackend] = useState(false);
-  const [backendSaveState, setBackendSaveState] = useState<
-    { kind: "ok" | "error"; text: string } | null
-  >(null);
-  const saveToBackend = async () => {
-    setBackendSaveState(null);
-    setSavingToBackend(true);
-    try {
-      await publish();
-      setBackendSaveState({ kind: "ok", text: "已保存到后端" });
-    } catch (error) {
-      const status = error instanceof ApiRequestError ? error.status : 0;
-      // 403：http 层清掉失效的人机验证凭证后，全局验证弹窗会自己重新出来（见 TurnstileGate）。
-      const text =
-        status === 401
-          ? "登录态已失效，请到 /admin 重新登录"
-          : status === 403
-            ? "需要先完成人机验证，完成后再点一次"
-            : error instanceof Error
-              ? error.message
-              : "保存到后端失败";
-      setBackendSaveState({ kind: "error", text });
-    } finally {
-      setSavingToBackend(false);
-    }
-  };
 
   // 默认色（无覆盖时生效的 token）。只在明暗模式切换/重置时重读 ——
   // 不能放进拖动热路径：getComputedStyle 会强制同步重排，每帧多次=掉帧。
@@ -108,21 +74,9 @@ export function MetricColorPicker({ hidden = false }: { hidden?: boolean }) {
       hidden={hidden}
     >
       <div className="metric-color-picker-head">
-        {/* 登录站长那行会挤（多个「保存到后端」按钮），省掉标题腾地方；访客那行照旧显示。 */}
-        {!canSaveToBackend && <span>配色自定义</span>}
+        {/* 登录站长的改动会自动同步到后端（见 startSiteThemeAutoSync），失败提示在页面底部。 */}
+        <span>配色自定义</span>
         <div className="metric-color-head-actions">
-          {canSaveToBackend && (
-            <button
-              type="button"
-              className="metric-color-save-backend"
-              onClick={() => void saveToBackend()}
-              disabled={savingToBackend}
-              title="把当前配色（连同其它本机设置）写到后端，成为所有设备与访客的默认值"
-            >
-              {savingToBackend ? <Spinner size={12} /> : <CloudUpload size={12} />}
-              <span>{savingToBackend ? "保存中" : "保存到后端"}</span>
-            </button>
-          )}
           <button
             type="button"
             className="metric-color-reset-all"
@@ -136,15 +90,6 @@ export function MetricColorPicker({ hidden = false }: { hidden?: boolean }) {
           </button>
         </div>
       </div>
-      {backendSaveState && (
-        <div
-          className={
-            backendSaveState.kind === "ok" ? "metric-color-notice" : "metric-color-error"
-          }
-        >
-          {backendSaveState.text}
-        </div>
-      )}
       {saveError && <div className="metric-color-error">保存失败（请确认已登录管理员）</div>}
       <div className="metric-color-group">
         <div className="metric-color-group-title">暗色背景</div>

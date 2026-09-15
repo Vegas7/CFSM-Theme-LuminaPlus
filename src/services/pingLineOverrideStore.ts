@@ -16,8 +16,8 @@ import {
  * 换一次线路就会把整个 `homepageMultiPingTaskIds` 钉死在本机，站长以后在设置页改线路再也
  * 传不到这台设备。这里只记逐节点、逐行的差异，站点那份照旧打底。
  *
- * 访客换的只留在本机；登录站长在设置页点「保存到后端」时，这份会并进主题配置的
- * `homepagePingLineOverrides`（见 `mergePingLineOverridesByNode`），保存成功后清掉。
+ * 访客换的只留在本机；登录站长换完会自动同步到后端：这份并进主题配置的
+ * `homepagePingLineOverrides`（见 `mergePingLineOverridesByNode`），同步成功后清掉。
  */
 
 const STORAGE_KEY = "cfsm-luminaplus:ping-line-overrides";
@@ -25,6 +25,8 @@ const STORAGE_KEY = "cfsm-luminaplus:ping-line-overrides";
 type Listener = () => void;
 
 const listeners = new Set<Listener>();
+// 只在用户换线路时通知，清空与别的标签页回流不算（登录站长的自动同步跟这个走，见 themeSettingsStore）。
+const editListeners = new Set<Listener>();
 let cache: PingLineOverridesByNode | null = null;
 
 const isKnownTaskId = (taskId: number) => CARRIER_TASK_BY_ID.has(taskId);
@@ -67,7 +69,7 @@ export function getPingLineOverrides(uuid: string): PingLineOverrides {
   return nodePingLineOverrides(readStorage(), uuid);
 }
 
-/** 所有节点换过的行（设置页拼「保存到后端」快照用）；没有变化时引用不变。 */
+/** 所有节点换过的行（拼站点配置快照用）；没有变化时引用不变。 */
 export function getAllPingLineOverrides(): PingLineOverridesByNode {
   return readStorage();
 }
@@ -82,9 +84,10 @@ export function setPingLineOverrides(uuid: string, overrides: PingLineOverrides)
   if (normalized === EMPTY_PING_LINE_OVERRIDES) delete next[uuid];
   else next[uuid] = normalized;
   persist(Object.keys(next).length > 0 ? next : EMPTY_PING_LINE_OVERRIDES_BY_NODE);
+  for (const listener of editListeners) listener();
 }
 
-/** 清掉所有节点换过的线路：「保存到后端」成功（已并进站点配置）或「改用后端配置」时调用。 */
+/** 清掉所有节点换过的线路：同步到后端成功（已并进站点配置）或「改用后端配置」时调用。 */
 export function clearPingLineOverrides(): void {
   if (Object.keys(readStorage()).length === 0) return;
   persist(EMPTY_PING_LINE_OVERRIDES_BY_NODE);
@@ -94,6 +97,14 @@ export function subscribePingLineOverrides(listener: Listener): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
+  };
+}
+
+/** 用户换了线路（见 editListeners）。 */
+export function subscribePingLineOverrideEdits(listener: Listener): () => void {
+  editListeners.add(listener);
+  return () => {
+    editListeners.delete(listener);
   };
 }
 

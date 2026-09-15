@@ -8,8 +8,10 @@ import {
   CircleDollarSign,
   ClipboardCheck,
   ClipboardCopy,
+  Cloud,
+  CloudAlert,
   CloudDownload,
-  CloudUpload,
+  CloudOff,
   EyeOff,
   Grid3x3,
   LayoutTemplate,
@@ -34,11 +36,15 @@ import { Flag } from "@/components/ui/Flag";
 import { useCarrierNames, usePublicConfig } from "@/hooks/usePublicConfig";
 import { useHourlyClock } from "@/hooks/useClock";
 import { useAllPingLineOverrides } from "@/hooks/usePingOverview";
-import { useSiteThemeOptions } from "@/hooks/useSiteThemeOptions";
+import {
+  cancelSiteThemeSync,
+  useCanSyncSiteTheme,
+  useSiteThemeOptions,
+  useSiteThemeSyncStatus,
+  type SiteThemeSyncPhase,
+} from "@/hooks/useSiteThemeOptions";
 import { useLocalThemeSettings } from "@/hooks/useThemeSettings";
 import { getNodes } from "@/services/api";
-import { getJwtToken } from "@/services/cfsm/config";
-import { ApiRequestError } from "@/services/cfsm/http";
 import { carrierPingTasks } from "@/services/cfsm/mappers";
 import { clearPingLineOverrides } from "@/services/pingLineOverrideStore";
 import {
@@ -687,6 +693,46 @@ const PremiumList = memo(function PremiumList({
   );
 });
 
+/** 登录站长在设置页停手多久自动保存（之后还有自动同步自己的防抖，见 SITE_THEME_SYNC_DEBOUNCE_MS）。 */
+const THEME_AUTO_SAVE_DEBOUNCE_MS = 600;
+
+/**
+ * 登录站长工具栏上替代保存按钮的同步状态。失败原因与「重试」在底部的 SiteThemeSyncNotice，
+ * 这里只说结果。
+ */
+function SiteSyncIndicator({
+  phase,
+  invalid,
+  waiting,
+}: {
+  phase: SiteThemeSyncPhase;
+  invalid: boolean;
+  waiting: boolean;
+}) {
+  const [icon, text] = invalid
+    ? [<CloudOff key="off" size={14} />, "有设置填得不对，暂未同步"]
+    : waiting || phase === "pending" || phase === "saving"
+      ? [<Spinner key="spin" size={14} />, "正在同步到后端"]
+      : phase === "error"
+        ? [<CloudAlert key="alert" size={14} />, "同步到后端失败"]
+        : phase === "synced"
+          ? [<Cloud key="done" size={14} />, "已同步到后端"]
+          : [<Cloud key="idle" size={14} />, "改动自动同步到后端"];
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      className={clsx(
+        "theme-manage-sync-status",
+        (invalid || phase === "error") && "is-error",
+      )}
+    >
+      {icon}
+      <span>{text}</span>
+    </span>
+  );
+}
+
 export function ThemeManage() {
   const now = useHourlyClock();
   const {
@@ -709,12 +755,12 @@ export function ThemeManage() {
   const [nodeSearch, setNodeSearch] = useState("");
   const [premiumSearch, setPremiumSearch] = useState("");
   const [saving, setSaving] = useState(false);
-  const [savingSite, setSavingSite] = useState(false);
   const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // 「保存到后端」只对登录站长开放：有 jwt_token 才显示。令牌陈旧则写请求会 401，另行提示。
-  const canSaveToSite = useMemo(() => Boolean(getJwtToken()), []);
+  // 登录站长：改动自动保存并同步到后端，没有保存按钮（口径见 useCanSyncSiteTheme）。
+  const canSaveToSite = useCanSyncSiteTheme();
+  const siteSync = useSiteThemeSyncStatus();
   const savingDraftRef = useRef<ThemeDraft | null>(null);
   const editVersionRef = useRef(0);
 
@@ -1104,14 +1150,45 @@ export function ThemeManage() {
   };
 
   /**
-   * 当前设置的完整站点快照：「复制配置 JSON」粘到后台「主题自定义配置」，或「保存到后端」直接写上去，
-   * 所有设备（以及所有访客）都以它为默认值。含配色、卡片上换过的线路等本页之外的设置，
-   * 拼法见 buildSiteThemeOptions（取色器的「保存到后端」用的是同一份）。
+   * 登录站长的自动保存：表单一停手就把草稿存进本机，自动同步随即把它发到后端（见 startSiteThemeAutoSync）。
+   * 等人停手再存：打字时每个字都存一次，整站读设置的地方都跟着重算。填错了（汇率接口地址、多线路
+   * 一条都没选）不存，和手动保存同样把关。
+   *
+   * 存之前把 lastSeededSignatureRef 钉到这份草稿：否则存完「当前生效的设置」变了、表单又不再 dirty，
+   * 灌草稿的 effect 会拿归一化后的设置重灌一遍 —— 正在输入的多行文本会被吞掉末尾的逗号和换行。
    */
-  const { snapshot: siteDefaults, publish: publishSiteDefaults } =
-    useSiteThemeOptions(draftThemeSettings);
+  const autoSaveRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    autoSaveRef.current = null;
+    if (!canSaveToSite || !config) return;
+    if (draftSignature === sourceSignature) return;
+    if (draftCostRateApiUrlInvalid || draftMultiPingInvalid) return;
+    const save = () => {
+      autoSaveRef.current = null;
+      lastSeededSignatureRef.current = draftSignature;
+      saveLocalThemeSettings({ ...getLocalThemeSettings(), ...draftThemeSettings });
+    };
+    autoSaveRef.current = save;
+    const timer = window.setTimeout(save, THEME_AUTO_SAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [
+    canSaveToSite,
+    config,
+    draftCostRateApiUrlInvalid,
+    draftMultiPingInvalid,
+    draftSignature,
+    draftThemeSettings,
+    sourceSignature,
+  ]);
+  // 停手不到防抖时长就离开设置页：把这次改动存上，自动同步在页面外照常发出去。
+  useEffect(() => () => autoSaveRef.current?.(), []);
 
-  // 「复制配置 JSON」（手动粘后台）与「保存到后端」（POST /api/theme_options）用的是同一份快照。
+  /**
+   * 当前设置的完整站点快照，「复制配置 JSON」粘到后台「主题自定义配置」用（未登录时才有这个按钮）。
+   * 含配色、卡片上换过的线路等本页之外的设置，拼法见 buildSiteThemeOptions（自动同步用的是同一份）。
+   */
+  const { snapshot: siteDefaults } = useSiteThemeOptions(draftThemeSettings);
+
   const siteDefaultsJson = useMemo(
     () => JSON.stringify(siteDefaults, null, 2),
     [siteDefaults],
@@ -1129,38 +1206,6 @@ export function ThemeManage() {
     setError("复制失败，请检查浏览器的剪贴板权限");
   };
 
-  /**
-   * 一键把当前配置写到站点级（后端 `theme_options`），替代「复制 JSON → 手动粘到后台」。
-   * 仅登录站长可用。成功后当前设备立刻以刚存下的站点配置为准（丢本机覆盖、写 config 缓存，见
-   * useSiteThemeOptions），草稿用刚提交的快照重新播种。
-   */
-  const handleSaveToSite = async () => {
-    // 和「保存到本机」同样把关：非法的汇率接口地址会被归一化成默认地址静默存上去，
-    // 开着多线路却一条线路都没选会让所有访客静默退回单线路。
-    if (savingSite || saving || draftCostRateApiUrlInvalid || draftMultiPingInvalid) return;
-    setError(null);
-    setMessage(null);
-    setSavingSite(true);
-    try {
-      await publishSiteDefaults();
-      seedDrafts(normalizeThemeSettings(siteDefaults));
-      setMessage("已保存到后端：所有设备与访客都会以这套配置为默认值");
-    } catch (saveError) {
-      if (saveError instanceof ApiRequestError && saveError.status === 401) {
-        setError("登录态已失效，请到 /admin 重新登录后再保存到后端（本机设置不受影响）");
-      } else if (saveError instanceof ApiRequestError && saveError.status === 403) {
-        // http 层清掉失效的 Turnstile 凭证后会通知全局验证弹窗重新拉 config、重新弹出（见 TurnstileGate）。
-        setError("本站需要人机验证：完成弹出的验证后，再点一次「保存到后端」");
-      } else if (saveError instanceof ApiRequestError && saveError.status === 400) {
-        setError("配置格式被后端拒绝（invalidThemeOptionsFormat），请把这条信息反馈给作者");
-      } else {
-        setError(saveError instanceof Error ? saveError.message : "保存到后端失败");
-      }
-    } finally {
-      setSavingSite(false);
-    }
-  };
-
   const handleReset = () => {
     seedDrafts(sourceThemeSettings);
     setMessage(null);
@@ -1171,9 +1216,12 @@ export function ThemeManage() {
    * 清掉本地覆盖，回到后端 theme_options + 主题默认值。
    *
    * 工具栏的「改用后端配置」按钮走这里：本机存过的设置只要还在，后端改的配置就永远压不过来
-   * （合并规则是本地覆盖优先），必须先把本地那份丢掉。
+   * （合并规则是本地覆盖优先），必须先把本地那份丢掉。登录站长的改动平时已经自动同步、本机是空的，
+   * 这个按钮只在同步失败、改动还留在本机时有用。
    */
   const handleRestoreSiteDefaults = () => {
+    // 登录站长同步失败时，本机改动会一直等着重试；丢掉本机就不该再发出去。
+    cancelSiteThemeSync();
     resetLocalThemeSettings();
     clearPingLineOverrides();
     // 表单同步回站点默认值：否则会留下一份"已被清除但仍显示"的脏草稿。
@@ -1273,35 +1321,25 @@ export function ThemeManage() {
                 <span>{copied ? "已复制" : "复制配置 JSON"}</span>
               </button>
             )}
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={
-                !isDirty || saving || draftCostRateApiUrlInvalid || draftMultiPingInvalid
-              }
-              className={clsx("theme-manage-button", !canSaveToSite && "is-primary")}
-              title={
-                canSaveToSite
-                  ? "只保存到当前设备的浏览器，用于先在本机预览；要让所有设备生效请点「保存到后端」"
-                  : "保存到当前设备的浏览器，只影响这台设备"
-              }
-            >
-              {saving ? <Spinner size={14} /> : <Save size={14} />}
-              <span>{saving ? "保存中" : "保存到本机"}</span>
-            </button>
-            {canSaveToSite && (
-              // 登录站长：发布到后端是主操作，放最右并高亮；本机保存退成次按钮在它左边。
+            {canSaveToSite ? (
+              <SiteSyncIndicator
+                phase={siteSync.phase}
+                invalid={isDirty && (draftCostRateApiUrlInvalid || draftMultiPingInvalid)}
+                // 表单停手等自动保存的那一小段也算「同步中」，不然会先闪一下「已同步」。
+                waiting={draftSignature !== sourceSignature}
+              />
+            ) : (
               <button
                 type="button"
-                onClick={() => void handleSaveToSite()}
+                onClick={handleSave}
                 disabled={
-                  savingSite || saving || draftCostRateApiUrlInvalid || draftMultiPingInvalid
+                  !isDirty || saving || draftCostRateApiUrlInvalid || draftMultiPingInvalid
                 }
                 className="theme-manage-button is-primary"
-                title="把当前设置写到后端，所有设备与访客都会生效；成功后本机自动跟随这套配置"
+                title="保存到当前设备的浏览器，只影响这台设备"
               >
-                {savingSite ? <Spinner size={14} /> : <CloudUpload size={14} />}
-                <span>{savingSite ? "保存中" : "保存到后端"}</span>
+                {saving ? <Spinner size={14} /> : <Save size={14} />}
+                <span>{saving ? "保存中" : "保存到本机"}</span>
               </button>
             )}
           </div>
@@ -1312,12 +1350,11 @@ export function ThemeManage() {
             <h1 className="theme-masthead-title">主题设置</h1>
             <p className="theme-masthead-desc">
               {canSaveToSite
-                ? "「保存到本机」只存当前设备、用于先预览；确认后点「保存到后端」，让所有设备与访客都用这套配置。"
+                ? "已登录站长：这里的改动，以及卡片配色、首页卡片上换的线路，都会自动同步到后端，所有设备与访客都用这套配置。"
                 : "设置保存在本机浏览器，只影响当前设备；要让所有设备与访客统一，用右上角「复制配置 JSON」粘到后台「外观设置 → 主题自定义配置」。"}
-              {localLineOverrideCount > 0 &&
-                ` 首页卡片上换过线路的 ${localLineOverrideCount} 台节点，也会一起写进${
-                  canSaveToSite ? "后端" : "配置 JSON"
-                }。`}
+              {!canSaveToSite &&
+                localLineOverrideCount > 0 &&
+                ` 首页卡片上换过线路的 ${localLineOverrideCount} 台节点，也会一起写进配置 JSON。`}
             </p>
           </div>
           <dl className="theme-masthead-meta">

@@ -205,6 +205,11 @@ body::after {
   color: var(--text-primary);
 }
 
+/* 两条提示同时出现（实时连接到时限 + 同步失败）时往上错开，别叠在一起。 */
+.realtime-session-prompt ~ .site-theme-sync-notice {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 5.5rem);
+}
+
 @media (max-width: 560px) {
   .realtime-session-prompt {
     flex-wrap: wrap;
@@ -496,37 +501,6 @@ body::after {
   gap: 10px;
   /* 标题省掉后（登录站长）也把按钮组顶到右边。 */
   margin-left: auto;
-}
-
-.metric-color-save-backend {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
-  padding: 4px 9px;
-  border-radius: 7px;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0;
-  white-space: nowrap;
-  color: #fff;
-  background: var(--accent-500);
-  transition: opacity 160ms ease;
-}
-.metric-color-save-backend > svg {
-  flex: 0 0 auto;
-}
-.metric-color-save-backend:hover:not(:disabled) {
-  opacity: 0.85;
-}
-.metric-color-save-backend:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.metric-color-notice {
-  font-size: 11px;
-  color: var(--accent-500);
 }
 
 .dark-depth-control {
@@ -949,6 +923,23 @@ body::after {
       color-mix(in srgb, var(--accent-500) 100%, white 8%) 0%,
       color-mix(in srgb, var(--accent-strong) 92%, white 8%) 100%
     );
+}
+
+/* 登录站长工具栏上替代保存按钮的同步状态：和按钮同高、不可点，所以不要边框和阴影。 */
+.theme-manage-sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.theme-manage-sync-status.is-error {
+  color: var(--status-offline);
 }
 
 .theme-manage-button.is-compact {

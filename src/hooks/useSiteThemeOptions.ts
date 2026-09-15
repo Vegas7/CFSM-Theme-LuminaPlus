@@ -1,14 +1,24 @@
-import { useCallback, useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useMemo, useSyncExternalStore } from "react";
 import { pickPaletteSettings } from "@/hooks/useMetricColors";
 import { useAllPingLineOverrides } from "@/hooks/usePingOverview";
 import { usePublicConfig } from "@/hooks/usePublicConfig";
 import { useLocalThemeSettings } from "@/hooks/useThemeSettings";
-import { saveThemeOptions } from "@/services/api";
-import { clearPingLineOverrides } from "@/services/pingLineOverrideStore";
-import { resetLocalThemeSettings } from "@/services/themeSettingsStore";
-import type { PublicConfig, ThemeSettings } from "@/types/cfsm";
+import { getPublic, saveThemeOptions } from "@/services/api";
+import { getJwtToken } from "@/services/cfsm/config";
 import {
+  clearPingLineOverrides,
+  getAllPingLineOverrides,
+  subscribePingLineOverrideEdits,
+} from "@/services/pingLineOverrideStore";
+import { queryClient } from "@/services/queryClient";
+import {
+  getLocalThemeSettings,
+  resetLocalThemeSettings,
+  subscribeLocalThemeSettingsEdits,
+} from "@/services/themeSettingsStore";
+import type { Me, PublicConfig, ThemeSettings } from "@/types/cfsm";
+import {
+  EMPTY_PING_LINE_OVERRIDES_BY_NODE,
   mergePingLineOverridesByNode,
   type PingLineOverridesByNode,
 } from "@/utils/pingLineOverrides";
@@ -32,7 +42,7 @@ export interface SiteThemeOptionsSources {
 }
 
 /**
- * 「复制配置 JSON」与「保存到后端」发出去的站点快照。设置页和取色器共用这一份，口径只在这里定：
+ * 「复制配置 JSON」与登录站长自动同步到后端发出去的站点快照，口径只在这里定：
  *
  * 1. 主题设置白名单（normalizeThemeSettings）：站点 → 本机 → 草稿逐层盖，默认外观先垫后台的设置；
  * 2. 卡片上换过的线路按行并进 `homepagePingLineOverrides`；
@@ -67,19 +77,11 @@ export function buildSiteThemeOptions({
   };
 }
 
-/**
- * 当前设备的站点快照，以及把它发布到后端（仅登录站长可用，失败时原样抛出，由调用方按状态码提示）。
- *
- * 发布成功后当前设备立刻以刚存下的配置为准：写进 config 缓存，再丢掉本机覆盖与卡片上换过的线路
- * （它们已经并进快照，不丢的话会一直压着站点那份）。**顺序不能反**：先丢本机的话，中间那次渲染是
- * 「旧站点配置 + 空的本机」，设置页会判成有未保存的改动、顺手把「已保存」提示清掉。不再另拉一次
- * `/api/config`：刚保存完的那两分钟里很可能拿回旧的一份（原因见 api 的 THEME_OPTIONS_WRITE_TRUST_MS）。
- */
+/** 当前设备的站点快照（未登录时「复制配置 JSON」导出的就是它）。 */
 export function useSiteThemeOptions(draftSettings?: ThemeSettings) {
   const { data: config } = usePublicConfig();
   const localSettings = useLocalThemeSettings();
   const localLineOverrides = useAllPingLineOverrides();
-  const queryClient = useQueryClient();
 
   const snapshot = useMemo(
     () =>
@@ -99,14 +101,219 @@ export function useSiteThemeOptions(draftSettings?: ThemeSettings) {
     ],
   );
 
-  const publish = useCallback(async () => {
-    const { theme_options: saved } = await saveThemeOptions(snapshot);
-    queryClient.setQueryData<PublicConfig>(["public"], (current) =>
-      current ? { ...current, theme_settings: saved } : current,
-    );
-    resetLocalThemeSettings();
-    clearPingLineOverrides();
-  }, [queryClient, snapshot]);
+  return { snapshot };
+}
 
-  return { snapshot, publish };
+/* ------------------------------------------------------------------ *
+ * 登录站长：改动自动同步到后端
+ * ------------------------------------------------------------------ */
+
+/**
+ * 最后一次改动之后等多久再发。拖取色器每一帧都在改，连打字也是一下一次；后端每次保存都写一次 D1，
+ * 等人停手再发一次就够了。
+ */
+export const SITE_THEME_SYNC_DEBOUNCE_MS = 1_000;
+
+/**
+ * 「有改动还没同步上」的标记。改完没等到发出去就关了页、登录态失效、断网，改动都还留在本机；
+ * 下次打开据此接着发。不看「本机有没有覆盖」本身：自动同步上线前站长存在本机的旧设置，不该一打开
+ * 就被推到后端、盖掉他在别的设备上的配置（这台设备上再改任何一项时才会连同它们一起发）。
+ */
+const SYNC_PENDING_STORAGE_KEY = "cfsm-luminaplus:site-sync-pending";
+
+export type SiteThemeSyncPhase = "idle" | "pending" | "saving" | "synced" | "error";
+
+export interface SiteThemeSyncStatus {
+  phase: SiteThemeSyncPhase;
+  /** phase 为 error 时的原始错误，由界面按状态码提示。 */
+  error: unknown;
+}
+
+const IDLE_STATUS: SiteThemeSyncStatus = { phase: "idle", error: null };
+
+let syncStatus = IDLE_STATUS;
+const syncStatusListeners = new Set<() => void>();
+let syncTimer: ReturnType<typeof setTimeout> | undefined;
+let syncRunning = false;
+let syncRerun = false;
+let editSeq = 0;
+
+function setSyncStatus(next: SiteThemeSyncStatus) {
+  syncStatus = next;
+  for (const listener of syncStatusListeners) listener();
+}
+
+function writeSyncPending(pending: boolean) {
+  try {
+    if (pending) window.localStorage.setItem(SYNC_PENDING_STORAGE_KEY, String(Date.now()));
+    else window.localStorage.removeItem(SYNC_PENDING_STORAGE_KEY);
+  } catch {
+    // 写不进去只是少了「下次打开接着发」，本次会话照常同步。
+  }
+}
+
+function readSyncPending(): boolean {
+  try {
+    return window.localStorage.getItem(SYNC_PENDING_STORAGE_KEY) != null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 这台设备的改动要不要自动同步到后端：有令牌，且登录校验（`["me"]`）没判成未登录。
+ * 光看令牌不够：令牌过期的老访客每改一次颜色都会撞一次 401。
+ */
+export function canSyncSiteTheme(): boolean {
+  if (!getJwtToken()) return false;
+  return queryClient.getQueryData<Me>(["me"])?.logged_in !== false;
+}
+
+/** 设置页、取色器判断「登录站长」用，与自动同步同口径；随登录校验结果更新。 */
+export function useCanSyncSiteTheme(): boolean {
+  const me = useSyncExternalStore(
+    (listener) => queryClient.getQueryCache().subscribe(listener),
+    () => queryClient.getQueryData<Me>(["me"]),
+  );
+  return Boolean(getJwtToken()) && me?.logged_in !== false;
+}
+
+function scheduleSync(delayMs: number) {
+  if (syncTimer !== undefined) clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => {
+    syncTimer = undefined;
+    void runSync();
+  }, delayMs);
+}
+
+function sameJson(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function handleLocalEdit() {
+  if (!canSyncSiteTheme()) return;
+  editSeq += 1;
+  writeSyncPending(true);
+  if (!syncRunning) setSyncStatus({ phase: "pending", error: null });
+  scheduleSync(SITE_THEME_SYNC_DEBOUNCE_MS);
+}
+
+/**
+ * 把「站点配置 + 本机改动」整份发到后端（`POST /api/theme_options`），成功后本机改动清掉、以后端为准。
+ *
+ * - 同一时刻只跑一个请求：途中又改过就等这次回来再发一轮，两次请求乱序到达会让旧快照盖掉新的；
+ * - 成功后**先写 config 缓存、再丢本机**，反过来中间那次渲染是「旧站点配置 + 空的本机」，页面会闪回旧设置；
+ *   只丢发出去的那份，请求途中又改过的留着下一轮一起发；
+ * - 不另拉 `/api/config`：刚保存完那两分钟里很可能拿回旧的一份（见 api 的 THEME_OPTIONS_WRITE_TRUST_MS）；
+ * - 快照和站点现有的一样就不发（比如颜色又调回了站点色），本机那份照样清掉；
+ * - 失败不自动重试：401/403 重试也是一样的结果，等用户重试或下一次改动。
+ */
+async function runSync() {
+  if (syncRunning) {
+    syncRerun = true;
+    return;
+  }
+  syncRunning = true;
+  const seq = editSeq;
+  setSyncStatus({ phase: "saving", error: null });
+  try {
+    const config = await queryClient.ensureQueryData<PublicConfig>({
+      queryKey: ["public"],
+      queryFn: ({ signal }) => getPublic({ signal }),
+    });
+    const localSettings = getLocalThemeSettings();
+    const localLineOverrides = getAllPingLineOverrides();
+    const site = {
+      siteSettings: config.theme_settings,
+      preferredAppearance: config.preferredAppearance,
+      localSettings: {},
+      localLineOverrides: EMPTY_PING_LINE_OVERRIDES_BY_NODE,
+    };
+    const snapshot = buildSiteThemeOptions({ ...site, localSettings, localLineOverrides });
+    if (!sameJson(snapshot, buildSiteThemeOptions(site))) {
+      const { theme_options: saved } = await saveThemeOptions(snapshot);
+      queryClient.setQueryData<PublicConfig>(["public"], (current) =>
+        current ? { ...current, theme_settings: saved } : current,
+      );
+    }
+    if (sameJson(getLocalThemeSettings(), localSettings)) resetLocalThemeSettings();
+    if (sameJson(getAllPingLineOverrides(), localLineOverrides)) clearPingLineOverrides();
+    if (editSeq === seq) {
+      writeSyncPending(false);
+      setSyncStatus({ phase: "synced", error: null });
+    }
+  } catch (error) {
+    setSyncStatus({ phase: "error", error });
+  } finally {
+    syncRunning = false;
+    if (syncRerun || editSeq !== seq) {
+      syncRerun = false;
+      if (syncTimer === undefined) scheduleSync(0);
+    }
+  }
+}
+
+/**
+ * 开始监听本机改动（AppShell 挂载时调用一次）。上次有没同步上的改动，这次打开接着发。
+ */
+export function startSiteThemeAutoSync(): () => void {
+  const stopThemeEdits = subscribeLocalThemeSettingsEdits(handleLocalEdit);
+  const stopLineEdits = subscribePingLineOverrideEdits(handleLocalEdit);
+  if (readSyncPending() && getJwtToken()) {
+    editSeq += 1;
+    scheduleSync(SITE_THEME_SYNC_DEBOUNCE_MS);
+  }
+  return () => {
+    stopThemeEdits();
+    stopLineEdits();
+    if (syncTimer !== undefined) clearTimeout(syncTimer);
+    syncTimer = undefined;
+  };
+}
+
+/** 失败后手动重试（登录态失效重新登录回来、完成人机验证之后）。 */
+export function retrySiteThemeSync(): void {
+  if (!getJwtToken()) return;
+  editSeq += 1;
+  scheduleSync(0);
+}
+
+/**
+ * 「改用后端配置」：本机改动整份丢掉，还没发出去的那次也不发了。已经在路上的请求拦不回来。
+ */
+export function cancelSiteThemeSync(): void {
+  if (syncTimer !== undefined) clearTimeout(syncTimer);
+  syncTimer = undefined;
+  writeSyncPending(false);
+  if (!syncRunning) setSyncStatus(IDLE_STATUS);
+}
+
+export function getSiteThemeSyncStatus(): SiteThemeSyncStatus {
+  return syncStatus;
+}
+
+export function subscribeSiteThemeSyncStatus(listener: () => void): () => void {
+  syncStatusListeners.add(listener);
+  return () => {
+    syncStatusListeners.delete(listener);
+  };
+}
+
+export function useSiteThemeSyncStatus(): SiteThemeSyncStatus {
+  return useSyncExternalStore(
+    subscribeSiteThemeSyncStatus,
+    getSiteThemeSyncStatus,
+    getSiteThemeSyncStatus,
+  );
+}
+
+/** 测试用：回到初始状态。 */
+export function resetSiteThemeSyncForTest(): void {
+  if (syncTimer !== undefined) clearTimeout(syncTimer);
+  syncTimer = undefined;
+  syncRunning = false;
+  syncRerun = false;
+  editSeq = 0;
+  syncStatus = IDLE_STATUS;
+  writeSyncPending(false);
 }

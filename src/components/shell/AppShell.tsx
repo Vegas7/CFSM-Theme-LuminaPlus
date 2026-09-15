@@ -4,6 +4,7 @@ import { BackgroundLayer } from "./BackgroundLayer";
 import { TurnstileGate } from "./TurnstileGate";
 import { SiteFooter } from "./SiteFooter";
 import { RealtimeSessionPrompt } from "./RealtimeSessionPrompt";
+import { SiteThemeSyncNotice } from "./SiteThemeSyncNotice";
 import { Spinner } from "@/components/ui/Spinner";
 import { useAppearance } from "@/hooks/useAppearance";
 import { useAuth } from "@/hooks/useAuth";
@@ -65,6 +66,7 @@ export function AppShell() {
       </main>
       <SiteFooter />
       <RealtimeSessionPrompt />
+      <SiteThemeSyncNotice />
     </div>
   );
 }

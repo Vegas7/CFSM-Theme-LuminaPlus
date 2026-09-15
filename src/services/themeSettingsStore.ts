@@ -9,7 +9,8 @@ import type { ThemeSettings } from "@/types/cfsm";
  *   默认值  ←  后端 theme_options  ←  本地覆盖
  *
  * 站长要给所有访客统一预设，就在后台外观设置的「主题自定义配置」里写 JSON；
- * 访客自己的调整只影响自己这台设备。
+ * 访客自己的调整只影响自己这台设备。登录站长的改动也先落在这里，随后自动同步到后端再清掉
+ * （见 useSiteThemeOptions 的 startSiteThemeAutoSync）。
  */
 
 const STORAGE_KEY = "cfsm-luminaplus:theme-settings";
@@ -17,6 +18,9 @@ const STORAGE_KEY = "cfsm-luminaplus:theme-settings";
 type Listener = () => void;
 
 const listeners = new Set<Listener>();
+// 只在「用户改了设置」时通知（保存），重置、别的标签页回流都不算 —— 登录站长的自动同步只跟这个走，
+// 否则同步成功后清本机那一下又会触发下一轮同步。
+const editListeners = new Set<Listener>();
 let cache: Record<string, unknown> | null = null;
 
 function readStorage(): Record<string, unknown> {
@@ -54,6 +58,7 @@ export function saveLocalThemeSettings(
     console.warn("[LuminaPlus] 主题设置无法写入本地存储", error);
   }
   emit();
+  for (const listener of editListeners) listener();
 }
 
 export function resetLocalThemeSettings(): void {
@@ -70,6 +75,14 @@ export function subscribeLocalThemeSettings(listener: Listener): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
+  };
+}
+
+/** 用户改了本机设置（见 editListeners）。 */
+export function subscribeLocalThemeSettingsEdits(listener: Listener): () => void {
+  editListeners.add(listener);
+  return () => {
+    editListeners.delete(listener);
   };
 }
 

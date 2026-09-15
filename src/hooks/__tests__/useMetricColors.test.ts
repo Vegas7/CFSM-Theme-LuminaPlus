@@ -71,6 +71,16 @@ describe("pickPaletteOverrides", () => {
     expect(pickPaletteOverrides({ ...site, colors: { ...site.colors } }, site)).toEqual({});
   });
 
+  it("marks a site colour the editor removed, so the site colour does not come back", () => {
+    // 登录站长点「恢复」回到主题默认色：本机记空串，逐色叠加和导出时都把站点色去掉。
+    const overrides = pickPaletteOverrides({ colors: { disk: "#222222" }, darkDepth: 60 }, site);
+    expect(overrides).toEqual({ metricColors: { cpu: "" } });
+    expect(pickPaletteSettings({ metricColors: site.colors, darkDepth: 60 }, overrides)).toEqual({
+      metricColors: { disk: "#222222" },
+      darkDepth: 60,
+    });
+  });
+
   it("keeps a dark depth that only differs from the site, even if it equals the default", () => {
     // 站点是 60（深黑）时选「灰黑」(= 默认 0)：必须记下来，否则值会弹回 60。
     expect(pickPaletteOverrides({ ...site, darkDepth: 0 }, site)).toEqual({ darkDepth: 0 });

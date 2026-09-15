@@ -55,6 +55,8 @@ const SETTINGS_KEY = "metricColors";
 const DARK_DEPTH_SETTINGS_KEY = "darkDepth";
 const DARK_DEPTH_CACHE_KEY = "cfsm-luminaplus:dark-depth";
 const HEX = /^#[0-9a-f]{6}$/;
+/** 本机覆盖里「这个颜色不用站点色、回到主题默认色」的写法。 */
+const UNSET_COLOR = "";
 export const DEFAULT_DARK_DEPTH = 0;
 
 export interface PaletteDraft {
@@ -115,8 +117,16 @@ function resolvePalette(
   local: Record<string, unknown> | undefined,
 ): PaletteDraft {
   const sitePalette = readPaletteDraft(site);
+  const colors = { ...sitePalette.colors, ...readMetricColorsFromSettings(local) };
+  // 本机写成空串的颜色 = 连站点色也不要、回到主题默认色（登录站长点「恢复」，见 pickPaletteOverrides）。
+  const localRaw = local?.[SETTINGS_KEY];
+  if (localRaw && typeof localRaw === "object") {
+    for (const { key } of METRIC_COLOR_META) {
+      if ((localRaw as Record<string, unknown>)[key] === UNSET_COLOR) delete colors[key];
+    }
+  }
   return {
-    colors: { ...sitePalette.colors, ...readMetricColorsFromSettings(local) },
+    colors,
     darkDepth:
       local?.[DARK_DEPTH_SETTINGS_KEY] != null
         ? readDarkDepthFromSettings(local)
@@ -157,6 +167,8 @@ export function pickPaletteOverrides(
   for (const { key } of METRIC_COLOR_META) {
     const value = next.colors[key];
     if (value != null && value !== site.colors[key]) colors[key] = value;
+    // 站点设了、编辑后没了：记成空串，否则逐色叠加时站点色又会冒回来。
+    else if (value == null && site.colors[key] != null) colors[key] = UNSET_COLOR;
   }
   const out: Record<string, unknown> = {};
   if (Object.keys(colors).length > 0) out[SETTINGS_KEY] = colors;
@@ -265,10 +277,11 @@ export function useMetricColorsSync() {
 /**
  * 编辑配色：即时预览并写入本机的主题设置。
  *
- * 「保存到后端」不在这里：它发的是整份站点快照，由取色器组件用 useSiteThemeOptions 发，
- * 和设置页共用一个口径。
+ * `syncsToSite`（登录站长）：本机改动随即自动同步到后端、同步完本机是空的，所以「恢复」「全部重置」
+ * 不能再以站点预设为准 —— 否则同步一完两个按钮就永远灰着。站长改的就是站点配色，恢复 = 回到主题默认色。
+ * 同步本身不在这里（useSiteThemeOptions 引用了本文件，反过来会成环），跟着本机存储的改动事件走。
  */
-export function useMetricColorsEditor() {
+export function useMetricColorsEditor({ syncsToSite = false }: { syncsToSite?: boolean } = {}) {
   const { data: config } = usePublicConfig();
   const localSettings = useLocalThemeSettings();
   const savedPalette = useMemo(
@@ -280,16 +293,18 @@ export function useMetricColorsEditor() {
   const sitePaletteRef = useRef(readPaletteDraft(config?.theme_settings));
   sitePaletteRef.current = readPaletteDraft(config?.theme_settings);
 
-  // 本机覆盖过的颜色：只有它们的「恢复」按钮可点（跟随站点预设的颜色没什么可恢复的）。
-  const overriddenColors = useMemo(
+  // 访客：本机覆盖过的颜色才能「恢复」（跟随站点预设的颜色没什么可恢复的）。
+  const localOverriddenColors = useMemo(
     () => readMetricColorsFromSettings(localSettings),
     [localSettings],
   );
-  // 「全部重置」是否可点：只看本机有没有存过配色 / 暗色深度覆盖（跟随站点预设时不该亮）。
-  const hasLocalOverrides = useMemo(() => {
+  // 访客：「全部重置」只看本机有没有存过配色 / 暗色深度覆盖（跟随站点预设时不该亮）。
+  const hasLocalPaletteOverrides = useMemo(() => {
     const l = localSettings as Record<string, unknown> | undefined;
     return l?.[SETTINGS_KEY] != null || l?.[DARK_DEPTH_SETTINGS_KEY] != null;
   }, [localSettings]);
+  const syncsToSiteRef = useRef(syncsToSite);
+  syncsToSiteRef.current = syncsToSite;
 
   const [draft, setDraft] = useState<PaletteDraft>(savedPalette);
   const draftRef = useRef<PaletteDraft>(savedPalette);
@@ -344,11 +359,11 @@ export function useMetricColorsEditor() {
     [commit],
   );
 
-  // 「恢复」= 跟随站点预设的这个颜色；站点没设才回到主题默认色。
+  // 「恢复」= 跟随站点预设的这个颜色；站点没设（或登录站长在改站点配色）才回到主题默认色。
   const resetColor = useCallback(
     (key: MetricColorKey) => {
       const colors = { ...draftRef.current.colors };
-      const siteColor = sitePaletteRef.current.colors[key];
+      const siteColor = syncsToSiteRef.current ? undefined : sitePaletteRef.current.colors[key];
       if (siteColor) colors[key] = siteColor;
       else delete colors[key];
       commit({ ...draftRef.current, colors });
@@ -363,8 +378,12 @@ export function useMetricColorsEditor() {
     [commit],
   );
 
-  // 「全部重置」= 丢掉本机覆盖、整份跟随站点预设（配色与暗色深度）。
+  // 「全部重置」= 丢掉本机覆盖、整份跟随站点预设（配色与暗色深度）；登录站长是整份回到主题默认。
   const resetAll = useCallback(() => {
+    if (syncsToSiteRef.current) {
+      commit({ colors: {}, darkDepth: DEFAULT_DARK_DEPTH });
+      return;
+    }
     const site = sitePaletteRef.current;
     commit({ colors: { ...site.colors }, darkDepth: site.darkDepth });
   }, [commit]);
@@ -372,12 +391,15 @@ export function useMetricColorsEditor() {
   return {
     colors: draft.colors,
     darkDepth: draft.darkDepth,
-    overriddenColors,
+    // 哪些颜色的「恢复」可点、「全部重置」可不可点。登录站长以当前配色和主题默认比。
+    overriddenColors: syncsToSite ? draft.colors : localOverriddenColors,
     setColor,
     resetColor,
     setDarkDepth,
     resetAll,
-    hasLocalOverrides,
+    hasLocalOverrides: syncsToSite
+      ? Object.keys(draft.colors).length > 0 || draft.darkDepth !== DEFAULT_DARK_DEPTH
+      : hasLocalPaletteOverrides,
     // 本地写入不会失败到需要提示的程度，保留字段以兼容调用方。
     saveError: false,
   };
