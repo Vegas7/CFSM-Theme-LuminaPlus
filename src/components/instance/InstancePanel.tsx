@@ -12,7 +12,7 @@ export function InstancePanel({
   children,
   className,
 }: {
-  /** 锚点 id：主题设置页的搜索直达按它滚过来。 */
+  /** 可选的 DOM id：主题设置页给每个分区一个，便于定位与调试。 */
   id?: string;
   title: string;
   kicker?: ReactNode;

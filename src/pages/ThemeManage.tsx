@@ -379,11 +379,7 @@ const ToggleRow = memo(function ToggleRow({
   onPatch: (key: BooleanDraftKey, value: boolean) => void;
 }) {
   return (
-    // id 让搜索直达能滚到这一行（见 SETTING_INDEX），字段名天然唯一。
-    <label
-      id={`set-${field}`}
-      className="surface-inset flex items-center justify-between gap-3 px-4 py-3"
-    >
+    <label className="surface-inset flex items-center justify-between gap-3 px-4 py-3">
       <span className="min-w-0">
         <span className="block text-[13px] font-medium text-[var(--text-primary)]">{title}</span>
         <span className="mt-1 block text-[11px] text-[var(--text-tertiary)]">{desc}</span>
@@ -711,8 +707,8 @@ type ThemeTabId = "appearance" | "home" | "card" | "cost" | "ping";
  * 设置按分组分页，一次只渲染一组。
  *
  * 原来九个分区一条直线排下来：桌面 4100px（5.4 屏）、手机 6000px（6.7 屏），节点越多越长，
- * 改一项设置要把整页扫一遍。分组后一组只剩 1~2 屏，配合上面的搜索直达，找设置从「滚」变成「点」。
- * 加新设置时一并想好放哪一组，并在 SETTING_INDEX 里登记，否则搜不到。
+ * 改一项设置要把整页扫一遍。分组后一组只剩 1~2 屏，顶栏和分组导航都钉住不动，来回改也不用滚。
+ * 加新设置时一并想好放哪一组。
  */
 const THEME_TABS: ReadonlyArray<{
   id: ThemeTabId;
@@ -727,153 +723,10 @@ const THEME_TABS: ReadonlyArray<{
   { id: "ping", label: "延迟", hint: "线路与逐节点指定", icon: Activity },
 ];
 
-const THEME_TAB_LABELS: Record<ThemeTabId, string> = {
-  appearance: "外观",
-  home: "首页",
-  card: "卡片",
-  cost: "花费",
-  ping: "延迟",
-};
-
 const DEFAULT_THEME_TAB: ThemeTabId = "appearance";
 
 function isThemeTabId(value: string | null): value is ThemeTabId {
   return value != null && THEME_TABS.some((tab) => tab.id === value);
-}
-
-interface SettingIndexEntry {
-  /** 锚点：面板的 id，或 ToggleRow 自带的 `set-<字段名>`。 */
-  id: string;
-  tab: ThemeTabId;
-  label: string;
-  /** 一起参与匹配的别名：写站长会想到的词，不是界面上的原话。 */
-  keywords: string;
-}
-
-/** 搜索框的词表。只登记「能一句话说清、值得单独找」的设置，面板级的锚点就够用了。 */
-const SETTING_INDEX: readonly SettingIndexEntry[] = [
-  { id: "set-appearance", tab: "appearance", label: "默认外观", keywords: "深色 浅色 暗色 跟随系统 主题" },
-  { id: "set-view", tab: "appearance", label: "默认卡片视图", keywords: "大卡 小卡 迷你 列表 桌面 移动 手机" },
-  { id: "set-opacity", tab: "appearance", label: "卡片透明度", keywords: "不透明度 背景图 遮罩 毛玻璃" },
-  { id: "set-showHomeOverview", tab: "home", label: "显示顶部总览", keywords: "在线数 流量 速率 概览" },
-  { id: "set-showGroupTabs", tab: "home", label: "显示分组筛选", keywords: "分组 tab 标签" },
-  { id: "set-showRegionBar", tab: "home", label: "显示地区筛选", keywords: "国旗 地区 region" },
-  { id: "set-showCardGroup", tab: "home", label: "卡片显示分组", keywords: "分组名" },
-  { id: "set-showCardPrice", tab: "home", label: "卡片显示价格", keywords: "价格 续费" },
-  { id: "set-enableHomeSort", tab: "home", label: "启用排序切换", keywords: "排序控件 访客" },
-  { id: "set-home-sort", tab: "home", label: "默认排序维度与方向", keywords: "排序 升序 降序 名称 网速 流量 价格" },
-  { id: "set-home-sort", tab: "home", label: "分组排序", keywords: "分组顺序 tab 顺序 上移 下移" },
-  { id: "set-home-ratings", tab: "home", label: "总览评级", keywords: "评级 名称 段位 流量 带宽 资产" },
-  { id: "set-hidden", tab: "home", label: "隐藏节点", keywords: "隐藏 移除 不显示 统计" },
-  { id: "set-showConnections", tab: "card", label: "显示连接数（TCP/UDP）", keywords: "连接数 tcp udp" },
-  { id: "set-compactShowTrafficTotal", tab: "card", label: "小卡片显示累计流量", keywords: "累计流量 出站 入站" },
-  { id: "set-compactShowBilling", tab: "card", label: "小卡片显示费用到期", keywords: "到期 续费 价格 剩余天数" },
-  { id: "set-compactShowUptime", tab: "card", label: "小卡片显示在线时间", keywords: "在线时长 uptime" },
-  { id: "set-showCostSummary", tab: "cost", label: "显示资产页入口按钮", keywords: "资产 入口 assets" },
-  { id: "set-showCostSummaryFloatingButton", tab: "cost", label: "显示资产悬浮按钮", keywords: "悬浮 资产 入口" },
-  { id: "set-cost", tab: "cost", label: "实时汇率接口", keywords: "汇率 接口 地址 frankfurter 折算" },
-  { id: "set-cost", tab: "cost", label: "忽略计费节点", keywords: "忽略 免费 不计费 资产" },
-  { id: "set-premium", tab: "cost", label: "收购溢价", keywords: "收购价 溢价 接手 转让" },
-  { id: "set-ping", tab: "ping", label: "单线路 / 多线路显示", keywords: "多线路 单线路 三网 卡片 延迟" },
-  { id: "set-ping", tab: "ping", label: "默认线路", keywords: "默认 线路 电信 联通 移动 兜底" },
-  { id: "set-ping-bindings", tab: "ping", label: "逐节点指定线路", keywords: "绑定 指定 单台 节点 线路" },
-  { id: "set-fakePingForUnbound", tab: "ping", label: "未绑定节点显示模拟延迟", keywords: "模拟 假数据 没有探测" },
-];
-
-const EMPTY_SETTING_RESULTS: readonly SettingIndexEntry[] = [];
-
-/**
- * 搜索直达：输入设置名或别名，回车 / 点结果跳到对应分组并高亮那一行。
- * 不做「过滤整页」：设置项的样子差别太大（开关、滑块、表格），逐项过滤会把版面拆碎。
- */
-function SettingSearch({ onJump }: { onJump: (entry: SettingIndexEntry) => void }) {
-  const [query, setQuery] = useState("");
-  const [activeIndex, setActiveIndex] = useState(0);
-  const results = useMemo(() => {
-    const keyword = query.trim().toLowerCase();
-    if (!keyword) return EMPTY_SETTING_RESULTS;
-    return SETTING_INDEX.filter(
-      (entry) =>
-        entry.label.toLowerCase().includes(keyword) ||
-        entry.keywords.toLowerCase().includes(keyword),
-    ).slice(0, 8);
-  }, [query]);
-
-  const pick = (entry: SettingIndexEntry | undefined) => {
-    if (!entry) return;
-    onJump(entry);
-    setQuery("");
-    setActiveIndex(0);
-  };
-
-  return (
-    <div className="theme-setting-search">
-      <label className="theme-setting-search-field">
-        <Search size={14} className="shrink-0 text-[var(--text-tertiary)]" />
-        <input
-          value={query}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setActiveIndex(0);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowDown") {
-              event.preventDefault();
-              setActiveIndex((index) => Math.min(index + 1, results.length - 1));
-            } else if (event.key === "ArrowUp") {
-              event.preventDefault();
-              setActiveIndex((index) => Math.max(index - 1, 0));
-            } else if (event.key === "Enter") {
-              event.preventDefault();
-              pick(results[activeIndex]);
-            } else if (event.key === "Escape") {
-              setQuery("");
-            }
-          }}
-          placeholder="搜索设置：透明度、连接数、隐藏节点…"
-          aria-label="搜索设置"
-          className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-tertiary)]"
-        />
-        {query !== "" && (
-          <button
-            type="button"
-            onClick={() => setQuery("")}
-            aria-label="清空搜索"
-            className="shrink-0 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
-          >
-            <X size={13} />
-          </button>
-        )}
-      </label>
-      {query.trim() !== "" && (
-        <div className="theme-setting-search-results" role="listbox" aria-label="搜索结果">
-          {results.length === 0 ? (
-            <div className="theme-setting-search-empty">没有匹配的设置</div>
-          ) : (
-            results.map((entry, index) => (
-              <button
-                key={`${entry.id}-${entry.label}`}
-                type="button"
-                role="option"
-                aria-selected={index === activeIndex}
-                data-active={index === activeIndex ? "true" : "false"}
-                // onMouseDown：输入框失焦前就要拿到这次点击，用 onClick 会先关掉结果列表。
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  pick(entry);
-                }}
-                onMouseEnter={() => setActiveIndex(index)}
-                className="theme-setting-search-item"
-              >
-                <span className="truncate">{entry.label}</span>
-                <span className="theme-setting-search-item-tab">{THEME_TAB_LABELS[entry.tab]}</span>
-              </button>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
 }
 
 /** 登录站长在设置页停手多久自动保存（之后还有自动同步自己的防抖，见 SITE_THEME_SYNC_DEBOUNCE_MS）。 */
@@ -938,7 +791,6 @@ export function ThemeManage() {
   // 两块逐节点的长表格默认收起（节点多时它们比其余所有设置加起来还长）。
   const [showNodeBindings, setShowNodeBindings] = useState(false);
   const [showPremiumList, setShowPremiumList] = useState(false);
-  const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
   // 多线路模式下「单线路设置」默认收起（大/小卡片用不到它）。但不能删：迷你卡片与列表永远
   // 走单线路，这里是它们唯一的入口，所以留一个展开按钮。单线路模式下这块恒展开。
   const [showSingleLineSettings, setShowSingleLineSettings] = useState(false);
@@ -975,7 +827,7 @@ export function ThemeManage() {
     },
     [],
   );
-  const switchTab = useCallback(
+  const openTab = useCallback(
     (next: ThemeTabId) => {
       // replace：换分组不该在浏览器历史里堆一串，按返回要回首页。view 等其它参数原样保留。
       setSearchParams(
@@ -986,66 +838,10 @@ export function ThemeManage() {
         },
         { replace: true },
       );
+      window.scrollTo({ top: 0 });
     },
     [setSearchParams],
   );
-
-  const openTab = useCallback(
-    (next: ThemeTabId) => {
-      switchTab(next);
-      window.scrollTo({ top: 0 });
-    },
-    [switchTab],
-  );
-
-  /** 搜索结果点过来：切到那一组，滚到并高亮那一项；目标在默认收起的块里就先展开。 */
-  const jumpToSetting = useCallback(
-    (entry: SettingIndexEntry) => {
-      if (entry.id === "set-ping-bindings") setShowNodeBindings(true);
-      if (entry.id === "set-premium") setShowPremiumList(true);
-      switchTab(entry.tab);
-      setPendingAnchor(entry.id);
-    },
-    [switchTab],
-  );
-
-  /**
-   * 滚到搜索选中的那一项并高亮。
-   *
-   * 切分组走的是路由导航，React Router 把它放进 transition 里推迟渲染 —— 这个 effect 跑的时候
-   * 目标多半还没挂上来，所以找不到就过一会再找（最多 20 次、约 320ms）。用定时器不用
-   * requestAnimationFrame：页面在后台时 rAF 不跑，跳转会卡在那儿不动。
-   */
-  useEffect(() => {
-    if (!pendingAnchor) return;
-    let target: HTMLElement | null = null;
-    let attempts = 0;
-    let retry = 0;
-    let timer = 0;
-    const find = () => {
-      target = document.getElementById(pendingAnchor);
-      if (!target) {
-        if (attempts++ < 20) {
-          retry = window.setTimeout(find, 16);
-          return;
-        }
-        setPendingAnchor(null);
-        return;
-      }
-      target.scrollIntoView({ block: "center", behavior: "smooth" });
-      target.classList.add("is-setting-hit");
-      timer = window.setTimeout(() => {
-        target?.classList.remove("is-setting-hit");
-        setPendingAnchor(null);
-      }, 1800);
-    };
-    find();
-    return () => {
-      window.clearTimeout(retry);
-      window.clearTimeout(timer);
-      target?.classList.remove("is-setting-hit");
-    };
-  }, [pendingAnchor]);
 
   const toggleTaskExpanded = useCallback((taskId: number) => {
     setExpandedTaskId((current) => (current === taskId ? null : taskId));
@@ -1554,13 +1350,15 @@ export function ThemeManage() {
 
   return (
     <div className="theme-manage flex flex-col gap-5 py-2">
-      <header className="theme-masthead">
-        <div className="theme-masthead-topline">
-          <Link to="/" className="instance-page-back">
-            <ArrowLeft size={14} />
-            返回首页
-          </Link>
-          <div className="theme-manage-toolbar-actions">
+      {/* 一行的粘性顶栏。原来是一整块 masthead（大标题 + 说明 + 统计），占掉小半屏、还跟着页面滚走，
+          改设置时想看同步状态得先滚回顶上。 */}
+      <header className="theme-topbar">
+        <Link to="/" className="instance-page-back theme-topbar-back">
+          <ArrowLeft size={14} />
+          <span>返回首页</span>
+        </Link>
+        <h1 className="theme-topbar-title">主题设置</h1>
+        <div className="theme-manage-toolbar-actions">
             {/* 登录站长停手就自动保存，「还没保存的改动」几乎不存在；这个按钮又退不回已经同步上去的改动，
                 留着只会让人以为能撤销。填错了（不自动保存）把那一项改对即可。 */}
             {!canSaveToSite && (
@@ -1623,33 +1421,18 @@ export function ThemeManage() {
                 <span>{saving ? "保存中" : "保存到本机"}</span>
               </button>
             )}
-          </div>
-        </div>
-        <div className="theme-masthead-main">
-          <div className="theme-masthead-headings">
-            <span className="theme-masthead-kicker">LUMINAPLUS · 主题控制台</span>
-            <h1 className="theme-masthead-title">主题设置</h1>
-            <p className="theme-masthead-desc">
-              {canSaveToSite
-                ? "已登录站长：这里的改动，以及卡片配色、首页卡片上换的线路，都会自动同步到后端，所有设备与访客都用这套配置。"
-                : "设置保存在本机浏览器，只影响当前设备；要让所有设备与访客统一，用右上角「复制配置 JSON」粘到后台「外观设置 → 主题自定义配置」。"}
-              {!canSaveToSite &&
-                localLineOverrideCount > 0 &&
-                ` 首页卡片上换过线路的 ${localLineOverrideCount} 台节点，也会一起写进配置 JSON。`}
-            </p>
-          </div>
-          <dl className="theme-masthead-meta">
-            <div>
-              <dt>首页延迟</dt>
-              <dd>
-                {draft.enableHomepageMultiPing
-                  ? `多线路 ${draft.homepageMultiPingTaskIds.length} / ${multiPingSlotLimit}`
-                  : `已指定线路 ${assignedNodeCount} / ${sortedClients.length}`}
-              </dd>
-            </div>
-          </dl>
         </div>
       </header>
+
+      <p className="theme-manage-hint">
+        {canSaveToSite
+          ? "改动会自动同步到后端：这里的设置、卡片配色、首页卡片上换的线路，所有设备与访客都跟着变。"
+          : "设置只存在这台设备的浏览器；要让所有设备与访客统一，用「复制配置 JSON」粘到后台「外观设置 → 主题自定义配置」。"}
+        {!canSaveToSite &&
+          localLineOverrideCount > 0 &&
+          ` 首页卡片上换过线路的 ${localLineOverrideCount} 台节点也会一起写进去。`}
+      </p>
+
 
       {(message || error || adminError) && (
         <div className="flex flex-col gap-3">
@@ -1680,8 +1463,6 @@ export function ThemeManage() {
           )}
         </div>
       )}
-
-      <SettingSearch onJump={jumpToSetting} />
 
       <div className="theme-manage-body">
         <nav className="theme-tab-rail" aria-label="设置分组">
