@@ -205,6 +205,15 @@ body::after {
   color: var(--text-primary);
 }
 
+/* 同步成功那条只报个平安，几秒后自己消失：不给按钮，图标和边框用强调色区别于失败。 */
+.site-theme-sync-notice.is-success {
+  border-color: color-mix(in srgb, var(--accent-500) 45%, var(--border));
+}
+
+.site-theme-sync-notice.is-success .realtime-session-prompt-icon {
+  color: var(--accent-500);
+}
+
 /* 两条提示同时出现（实时连接到时限 + 同步失败）时往上错开，别叠在一起。 */
 .realtime-session-prompt ~ .site-theme-sync-notice {
   bottom: calc(env(safe-area-inset-bottom, 0px) + 5.5rem);

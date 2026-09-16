@@ -2247,14 +2247,6 @@ export function ThemeManage() {
                           </p>
                         </div>
                   </div>
-
-                  <ToggleRow
-                    field="fakePingForUnbound"
-                    title="未绑定节点显示模拟延迟"
-                    desc="所选线路没有探测数据的在线节点显示前端生成的模拟数据（延迟 1-10ms、丢包 0%）。仅用于视觉统一，不代表真实网络质量；后台没有为该节点配置对应线路的探测目标时会出现这种情况。"
-                    checked={draft.fakePingForUnbound}
-                    onPatch={patch}
-                  />
                 </div>
               </InstancePanel>
 
@@ -2326,6 +2318,14 @@ export function ThemeManage() {
                         );
                       })}
                   </div>
+
+                  <ToggleRow
+                    field="fakePingForUnbound"
+                    title="未绑定节点显示模拟延迟"
+                    desc="所选线路没有探测数据的在线节点显示前端生成的模拟数据（延迟 1-10ms、丢包 0%）。仅用于视觉统一，不代表真实网络质量；后台没有为该节点配置对应线路的探测目标时会出现这种情况。"
+                    checked={draft.fakePingForUnbound}
+                    onPatch={patch}
+                  />
                 </div>
               </InstancePanel>
             </>

@@ -1,5 +1,6 @@
-import { useEffect, useId, useState } from "react";
-import { CloudAlert } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
+import { Cloud, CloudAlert } from "lucide-react";
 import {
   retrySiteThemeSync,
   startSiteThemeAutoSync,
@@ -16,19 +17,51 @@ function describeSyncError(error: unknown): string {
   return error instanceof Error && error.message ? error.message : "网络错误，改动先留在本机。";
 }
 
+/** 同步成功的提示停留多久。 */
+const SUCCESS_NOTICE_MS = 3200;
+
 /**
  * 登录站长的改动自动同步到后端（设置页、卡片配色、卡片上换线路都走这一条，见 startSiteThemeAutoSync）。
- * 这里负责启动监听，并在同步失败时提示 —— 改动是在首页取色器、卡片上做的，失败原因只能在全局说。
- * 成功不提示：设置页工具栏有状态，别处改完颜色本来就立刻看得见。
+ * 这里负责启动监听，并提示结果 —— 改动是在首页取色器、卡片上做的，除了这儿没别的地方能说。
+ *
+ * 成功的提示只在设置页**之外**出现几秒：设置页顶栏自己有同步状态，两边一起说就重复了。
  */
 export function SiteThemeSyncNotice() {
   const titleId = useId();
   const status = useSiteThemeSyncStatus();
   const [dismissedError, setDismissedError] = useState<unknown>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const previousPhase = useRef(status.phase);
+  const { search } = useLocation();
+  const onSettingsPage = new URLSearchParams(search).get("view") === "theme-manage";
 
   useEffect(() => startSiteThemeAutoSync(), []);
 
-  if (status.phase !== "error" || status.error === dismissedError) return null;
+  // 只认「发出去之后回来了」这一次跳变：idle → synced（没发请求，快照和站点一样）不提示。
+  useEffect(() => {
+    const wasSaving = previousPhase.current === "saving";
+    previousPhase.current = status.phase;
+    if (status.phase !== "synced" || !wasSaving) return;
+    setShowSuccess(true);
+    const timer = window.setTimeout(() => setShowSuccess(false), SUCCESS_NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [status.phase]);
+
+  if (status.phase !== "error" || status.error === dismissedError) {
+    if (!showSuccess || onSettingsPage) return null;
+    return (
+      <section
+        className="realtime-session-prompt site-theme-sync-notice is-success"
+        aria-live="polite"
+      >
+        <Cloud size={16} strokeWidth={2} className="realtime-session-prompt-icon" aria-hidden />
+        <div className="realtime-session-prompt-body">
+          <strong>改动已同步到后端</strong>
+          <p>所有设备与访客都会用这套配置。</p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section
