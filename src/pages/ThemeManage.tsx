@@ -22,7 +22,6 @@ import {
   ListFilter,
   Moon,
   Plus,
-  RefreshCw,
   Rows3,
   Save,
   Search,
@@ -733,27 +732,42 @@ function isThemeTabId(value: string | null): value is ThemeTabId {
 const THEME_AUTO_SAVE_DEBOUNCE_MS = 600;
 
 /**
- * 登录站长工具栏上替代保存按钮的同步状态。失败原因与「重试」在底部的 SiteThemeSyncNotice，
- * 这里只说结果。
+ * 工具栏上替代保存按钮的状态：谁都不用点保存 —— 站长的改动同步到后端，访客的存本机。
+ * 同步失败的原因与「重试」在底部的 SiteThemeSyncNotice，这里只说结果。
  */
 function SiteSyncIndicator({
   phase,
   invalid,
   waiting,
+  toSite,
+  savedLocally,
 }: {
   phase: SiteThemeSyncPhase;
   invalid: boolean;
   waiting: boolean;
+  /** 登录站长：存完还要发到后端；访客只存本机。 */
+  toSite: boolean;
+  /** 访客这次会话已经存过一次（站长看 phase）。 */
+  savedLocally: boolean;
 }) {
   const [icon, text] = invalid
-    ? [<CloudOff key="off" size={14} />, "有设置填得不对，暂未同步"]
-    : waiting || phase === "pending" || phase === "saving"
-      ? [<Spinner key="spin" size={14} />, "正在同步到后端"]
-      : phase === "error"
-        ? [<CloudAlert key="alert" size={14} />, "同步到后端失败"]
-        : phase === "synced"
-          ? [<Cloud key="done" size={14} />, "已同步到后端"]
-          : [<Cloud key="idle" size={14} />, "改动自动同步到后端"];
+    ? [
+        <CloudOff key="off" size={14} />,
+        toSite ? "有设置填得不对，暂未同步" : "有设置填得不对，暂未保存",
+      ]
+    : !toSite
+      ? waiting
+        ? [<Spinner key="spin" size={14} />, "正在保存到本机"]
+        : savedLocally
+          ? [<Save key="saved" size={14} />, "已保存到本机"]
+          : [<Save key="local" size={14} />, "改动自动保存到本机"]
+      : waiting || phase === "pending" || phase === "saving"
+        ? [<Spinner key="spin" size={14} />, "正在同步到后端"]
+        : phase === "error"
+          ? [<CloudAlert key="alert" size={14} />, "同步到后端失败"]
+          : phase === "synced"
+            ? [<Cloud key="done" size={14} />, "已同步到后端"]
+            : [<Cloud key="idle" size={14} />, "改动自动同步到后端"];
   return (
     <span
       role="status"
@@ -797,14 +811,14 @@ export function ThemeManage() {
   const [taskSearch, setTaskSearch] = useState("");
   const [nodeSearch, setNodeSearch] = useState("");
   const [premiumSearch, setPremiumSearch] = useState("");
-  const [saving, setSaving] = useState(false);
+  // 访客的「已保存到本机」：这次会话存过一次才显示（站长那边看同步状态）。
+  const [savedLocally, setSavedLocally] = useState(false);
   const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // 登录站长：改动自动保存并同步到后端，没有保存按钮（口径见 useCanSyncSiteTheme）。
   const canSaveToSite = useCanSyncSiteTheme();
   const siteSync = useSiteThemeSyncStatus();
-  const savingDraftRef = useRef<ThemeDraft | null>(null);
   const editVersionRef = useRef(0);
 
   // 单字段更新收口,所有表单控件都走它。值未变时原样返回 prev,保留旧的独立 useState
@@ -1184,34 +1198,15 @@ export function ThemeManage() {
     [draft.homepagePingBindings],
   );
 
-  const handleSave = async () => {
-    if (savingDraftRef.current || draftMultiPingInvalid) return;
-    const submittedEditVersion = editVersionRef.current;
-    savingDraftRef.current = draft;
-    setSaving(true);
-    setError(null);
-    setMessage(null);
-    try {
-      // 第三方主题不能写后端设置，这里只保存到浏览器本地；站点级预设仍由后台
-      // 「主题自定义配置」的 theme_options 提供。
-      // 合并进已有的本地设置：配色选择器写的 metricColors / darkDepth 不归本页管，
-      // 整体覆盖会把它们一起抹掉。
-      saveLocalThemeSettings({ ...getLocalThemeSettings(), ...draftThemeSettings });
-      if (editVersionRef.current === submittedEditVersion) {
-        setMessage("主题设置已保存到本机浏览器");
-      }
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "保存失败");
-    } finally {
-      savingDraftRef.current = null;
-      setSaving(false);
-    }
-  };
-
   /**
-   * 登录站长的自动保存：表单一停手就把草稿存进本机，自动同步随即把它发到后端（见 startSiteThemeAutoSync）。
+   * 自动保存：表单一停手就把草稿存进本机；登录站长那边自动同步随即把它发到后端
+   * （见 startSiteThemeAutoSync），访客的就只留在这台设备。两边都没有保存按钮。
    * 等人停手再存：打字时每个字都存一次，整站读设置的地方都跟着重算。填错了（汇率接口地址、多线路
-   * 一条都没选）不存，和手动保存同样把关。
+   * 一条都没选）不存。
+   *
+   * **只认这次会话里真改过的**（`editVersionRef` 只在表单回调里加）：草稿播种和站点配置到达之间有一拍
+   * 「默认值草稿 vs 已有设置」，不挡住的话，光打开设置页就会把这台设备本机存的旧设置存一遍
+   * —— 站长那边接着被自动同步推到后端，盖掉他在别的设备上的配置。
    *
    * 存之前把 lastSeededSignatureRef 钉到这份草稿：否则存完「当前生效的设置」变了、表单又不再 dirty，
    * 灌草稿的 effect 会拿归一化后的设置重灌一遍 —— 正在输入的多行文本会被吞掉末尾的逗号和换行。
@@ -1219,19 +1214,19 @@ export function ThemeManage() {
   const autoSaveRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     autoSaveRef.current = null;
-    if (!canSaveToSite || !config) return;
+    if (!config || editVersionRef.current === 0) return;
     if (draftSignature === sourceSignature) return;
     if (draftCostRateApiUrlInvalid || draftMultiPingInvalid) return;
     const save = () => {
       autoSaveRef.current = null;
       lastSeededSignatureRef.current = draftSignature;
       saveLocalThemeSettings({ ...getLocalThemeSettings(), ...draftThemeSettings });
+      setSavedLocally(true);
     };
     autoSaveRef.current = save;
     const timer = window.setTimeout(save, THEME_AUTO_SAVE_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
   }, [
-    canSaveToSite,
     config,
     draftCostRateApiUrlInvalid,
     draftMultiPingInvalid,
@@ -1239,7 +1234,7 @@ export function ThemeManage() {
     draftThemeSettings,
     sourceSignature,
   ]);
-  // 停手不到防抖时长就离开设置页：把这次改动存上，自动同步在页面外照常发出去。
+  // 停手不到防抖时长就离开设置页：把这次改动存上（站长的由自动同步在页面外照常发出去）。
   useEffect(() => () => autoSaveRef.current?.(), []);
 
   /**
@@ -1263,12 +1258,6 @@ export function ThemeManage() {
     }
     setMessage(null);
     setError("复制失败，请检查浏览器的剪贴板权限");
-  };
-
-  const handleReset = () => {
-    seedDrafts(sourceThemeSettings);
-    setMessage(null);
-    setError(null);
   };
 
   /**
@@ -1359,79 +1348,44 @@ export function ThemeManage() {
         </Link>
         <h1 className="theme-topbar-title">主题设置</h1>
         <div className="theme-manage-toolbar-actions">
-            {/* 登录站长停手就自动保存，「还没保存的改动」几乎不存在；这个按钮又退不回已经同步上去的改动，
-                留着只会让人以为能撤销。填错了（不自动保存）把那一项改对即可。 */}
-            {!canSaveToSite && (
-              <button
-                type="button"
-                onClick={handleReset}
-                disabled={!isDirty || saving}
-                className="theme-manage-button"
-                title="撤销未保存的改动，回到当前生效的设置"
-              >
-                <RefreshCw size={14} />
-                <span>重置</span>
-              </button>
-            )}
-            {(!canSaveToSite || siteHasUnsyncedChanges) && (
-              <button
-                type="button"
-                onClick={handleRestoreSiteDefaults}
-                disabled={saving}
-                className="theme-manage-button"
-                title={
-                  canSaveToSite
-                    ? "放弃这台设备上还没同步到后端的改动（含配色、首页卡片上换过的线路），改用后端当前的配置"
-                    : "放弃本机保存的设置（含配色、首页卡片上换过的线路），改用后端当前的配置（后台「外观设置 → 主题自定义配置」下发的那份）"
-                }
-              >
-                <CloudDownload size={14} />
-                <span>改用后端配置</span>
-              </button>
-            )}
-            {!canSaveToSite && (
-              <button
-                type="button"
-                onClick={() => void handleCopySiteDefaults()}
-                className="theme-manage-button"
-                title="复制当前设置的 JSON；粘贴到后台「外观设置 → 主题自定义配置」即可让所有设备用同一套配置"
-              >
-                {copied ? <ClipboardCheck size={14} /> : <ClipboardCopy size={14} />}
-                <span>{copied ? "已复制" : "复制配置 JSON"}</span>
-              </button>
-            )}
-            {canSaveToSite ? (
-              <SiteSyncIndicator
-                phase={siteSync.phase}
-                invalid={isDirty && (draftCostRateApiUrlInvalid || draftMultiPingInvalid)}
-                // 表单停手等自动保存的那一小段也算「同步中」，不然会先闪一下「已同步」。
-                waiting={draftAwaitingAutoSave}
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={
-                  !isDirty || saving || draftCostRateApiUrlInvalid || draftMultiPingInvalid
-                }
-                className="theme-manage-button is-primary"
-                title="保存到当前设备的浏览器，只影响这台设备"
-              >
-                {saving ? <Spinner size={14} /> : <Save size={14} />}
-                <span>{saving ? "保存中" : "保存到本机"}</span>
-              </button>
-            )}
+          {/* 两边都没有保存按钮了（停手就自动保存），「重置」退不回已经存下的改动，留着只会让人以为能撤销。
+              填错了（不自动保存）把那一项改对即可。 */}
+          {(!canSaveToSite || siteHasUnsyncedChanges) && (
+            <button
+              type="button"
+              onClick={handleRestoreSiteDefaults}
+              className="theme-manage-button"
+              title={
+                canSaveToSite
+                  ? "放弃这台设备上还没同步到后端的改动（含配色、首页卡片上换过的线路），改用后端当前的配置"
+                  : "放弃本机存过的设置（含配色、首页卡片上换过的线路），改用后端当前的配置（后台「外观设置 → 主题自定义配置」下发的那份）"
+              }
+            >
+              <CloudDownload size={14} />
+              <span>改用后端配置</span>
+            </button>
+          )}
+          {!canSaveToSite && (
+            <button
+              type="button"
+              onClick={() => void handleCopySiteDefaults()}
+              className="theme-manage-button"
+              title="复制当前设置的 JSON；粘贴到后台「外观设置 → 主题自定义配置」即可让所有设备用同一套配置"
+            >
+              {copied ? <ClipboardCheck size={14} /> : <ClipboardCopy size={14} />}
+              <span>{copied ? "已复制" : "复制配置 JSON"}</span>
+            </button>
+          )}
+          <SiteSyncIndicator
+            phase={siteSync.phase}
+            invalid={isDirty && (draftCostRateApiUrlInvalid || draftMultiPingInvalid)}
+            // 表单停手等自动保存的那一小段也算「保存中」，不然会先闪一下「已保存」。
+            waiting={draftAwaitingAutoSave}
+            toSite={canSaveToSite}
+            savedLocally={savedLocally}
+          />
         </div>
       </header>
-
-      <p className="theme-manage-hint">
-        {canSaveToSite
-          ? "改动会自动同步到后端：这里的设置、卡片配色、首页卡片上换的线路，所有设备与访客都跟着变。"
-          : "设置只存在这台设备的浏览器；要让所有设备与访客统一，用「复制配置 JSON」粘到后台「外观设置 → 主题自定义配置」。"}
-        {!canSaveToSite &&
-          localLineOverrideCount > 0 &&
-          ` 首页卡片上换过线路的 ${localLineOverrideCount} 台节点也会一起写进去。`}
-      </p>
 
 
       {(message || error || adminError) && (
