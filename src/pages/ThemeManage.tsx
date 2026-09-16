@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   ArrowLeft,
+  Coins,
   ArrowUpDown,
   ChevronDown,
   ChevronUp,
@@ -21,6 +22,7 @@ import {
   List,
   ListFilter,
   Moon,
+  Network,
   Plus,
   Rows3,
   Save,
@@ -380,8 +382,8 @@ const ToggleRow = memo(function ToggleRow({
   return (
     <label className="surface-inset flex items-center justify-between gap-3 px-4 py-3">
       <span className="min-w-0">
-        <span className="block text-[13px] font-medium text-[var(--text-primary)]">{title}</span>
-        <span className="mt-1 block text-[11px] text-[var(--text-tertiary)]">{desc}</span>
+        <span className="block setting-subhead-title">{title}</span>
+        <span className="mt-1 block setting-hint">{desc}</span>
       </span>
       <input
         type="checkbox"
@@ -558,11 +560,11 @@ const TaskBindingSection = memo(function TaskBindingSection({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <Flag region={client.region} size={14} />
-                      <span className="truncate text-[13px] font-medium text-[var(--text-primary)]">
+                      <span className="truncate setting-subhead-title">
                         {client.name}
                       </span>
                     </div>
-                    <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                    <div className="mt-1 setting-hint">
                       {subtitle || client.region || "未设置分组"}
                     </div>
                   </div>
@@ -624,7 +626,7 @@ const PremiumList = memo(function PremiumList({
                 {client.name}
               </span>
               <span
-                className="shrink-0 text-[11px] text-[var(--text-tertiary)]"
+                className="shrink-0 setting-hint"
                 title="该节点当前剩余价值（按账单周期折算，不含溢价）"
               >
                 {referenceLabel}
@@ -1499,7 +1501,6 @@ export function ThemeManage() {
                 id="set-appearance"
                 kicker="外观"
                 title="默认外观"
-                description="为首次访问或尚未手动切换外观的用户设置默认显示模式；后续仍可在首页右上角按需切换。"
                 aside={<LayoutTemplate size={16} />}
               >
                 <div className="instance-segmented is-scrollable">
@@ -1523,16 +1524,15 @@ export function ThemeManage() {
                 id="set-view"
                 kicker="视图"
                 title="默认卡片视图"
-                description="分别设置桌面端与移动端的默认卡片尺寸；首页右上角按钮只临时切换当前设备的显示。"
                 aside={<LayoutGrid size={16} />}
               >
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="surface-inset flex flex-col gap-3 px-4 py-4">
                     <div>
-                      <div className="text-[13px] font-semibold text-[var(--text-primary)]">
+                      <div className="setting-subhead-title">
                         桌面端默认
                       </div>
-                      <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                      <div className="mt-1 setting-hint">
                         适用于宽度大于 720px 的浏览器窗口。
                       </div>
                     </div>
@@ -1554,10 +1554,10 @@ export function ThemeManage() {
                   </div>
                   <div className="surface-inset flex flex-col gap-3 px-4 py-4">
                     <div>
-                      <div className="text-[13px] font-semibold text-[var(--text-primary)]">
+                      <div className="setting-subhead-title">
                         移动端默认
                       </div>
-                      <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                      <div className="mt-1 setting-hint">
                         适用于宽度小于等于 720px 的手机或窄屏窗口。
                       </div>
                     </div>
@@ -1584,13 +1584,12 @@ export function ThemeManage() {
                 id="set-opacity"
                 kicker="背景"
                 title="卡片透明度"
-                description="背景图由后台「外观设置」统一下发到所有主题，这里只调节本主题卡片的不透明度；调低后会自动叠加可读性遮罩。"
                 aside={<Wallpaper size={16} />}
               >
                 <div className="flex flex-col gap-4">
                   <div className="surface-inset flex flex-col gap-3 px-4 py-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <span className="text-[13px] font-semibold text-[var(--text-primary)]">
+                      <span className="setting-subhead-title">
                         卡片不透明度
                       </span>
                       <span className="inline-flex items-center gap-1.5">
@@ -1614,12 +1613,12 @@ export function ThemeManage() {
                         <span className="text-[13px] font-medium text-[var(--text-tertiary)]">%</span>
                       </span>
                     </div>
-                    <span className="text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                    <span className="setting-hint">
                       输入 0–100 的整数。100 = 完全不透明，数值越低卡片越通透、越能透出站点背景图。
                       低于 95 时会自动叠加一层可读性遮罩，保证文字清晰。
                     </span>
                   </div>
-                  <div className="surface-inset px-4 py-3 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                  <div className="surface-inset px-4 py-3 setting-hint">
                     要更换背景图、站点标题或站点图标，请到 <code>/admin#admin</code> 的外观设置中修改，
                     它们对所有主题统一生效。
                   </div>
@@ -1634,7 +1633,6 @@ export function ThemeManage() {
                 id="set-home-display"
                 kicker="显示"
                 title="首页显示项"
-                description="首页顶部总览、分组与地区筛选栏，以及卡片上是否显示分组和价格。"
                 aside={<ListFilter size={16} />}
               >
                 <div className="grid gap-3 md:grid-cols-3">
@@ -1688,14 +1686,13 @@ export function ThemeManage() {
                 id="set-home-sort"
                 kicker="排序"
                 title="排序与分组"
-                description="首次访问时的排序方式，以及首页分组 Tab 的先后顺序；访客可临时切换排序。"
                 aside={<ArrowUpDown size={16} />}
               >
                 <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)]">
                   <div>
-                    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                      <span className="text-[13px] font-medium text-[var(--text-primary)]">默认排序维度</span>
-                      <span className="text-[11px] text-[var(--text-tertiary)]">
+                    <div className="setting-subhead">
+                      <span className="setting-subhead-title">默认排序维度</span>
+                      <span className="setting-hint">
                         首次访问时的初始排序；访客可临时切换。
                       </span>
                     </div>
@@ -1715,7 +1712,7 @@ export function ThemeManage() {
                     </div>
                   </div>
                   <div>
-                    <div className="mb-2 text-[13px] font-medium text-[var(--text-primary)]">默认方向</div>
+                    <div className="mb-2 setting-subhead-title">默认方向</div>
                     <div className="instance-segmented">
                       <button
                         type="button"
@@ -1740,9 +1737,9 @@ export function ThemeManage() {
                 </div>
 
                 <div className="mt-4">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                    <span className="text-[13px] font-medium text-[var(--text-primary)]">分组排序</span>
-                    <span className="text-[11px] text-[var(--text-tertiary)]">
+                  <div className="setting-subhead">
+                    <span className="setting-subhead-title">分组排序</span>
+                    <span className="setting-hint">
                       调整首页分组 Tab 的显示顺序；未列出的分组按后端顺序排在后面。
                     </span>
                   </div>
@@ -1800,20 +1797,19 @@ export function ThemeManage() {
                 id="set-home-ratings"
                 kicker="评级"
                 title="总览评级"
-                description="在累计流量、实时带宽、资产概览右下角显示文字评级；名称用英文逗号分隔，只取前四个。"
                 aside={<Sparkles size={16} />}
               >
                 <div className="surface-inset px-4 py-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <span className="min-w-0">
-                      <span className="block text-[13px] font-semibold text-[var(--text-primary)]">
+                      <span className="block setting-subhead-title">
                         三处总览
                       </span>
-                      <span className="mt-1 block text-[11px] text-[var(--text-tertiary)]">
+                      <span className="mt-1 block setting-hint">
                         关掉这里，三处评级一起不显示。
                       </span>
                     </span>
-                    <label className="inline-flex shrink-0 items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+                    <label className="inline-flex shrink-0 items-center gap-2 setting-field-label">
                       <span>启用</span>
                       <input
                         type="checkbox"
@@ -1830,7 +1826,7 @@ export function ThemeManage() {
                       const ratingEnabled = draft.showOverviewRatings && draft[field.toggleKey];
                       return (
                         <div key={field.key} className="flex min-w-0 flex-col gap-2">
-                          <label className="flex items-center justify-between gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+                          <label className="flex items-center justify-between gap-2 setting-field-label">
                             <span>{field.title}</span>
                             <input
                               type="checkbox"
@@ -1848,9 +1844,6 @@ export function ThemeManage() {
                             aria-label={`${field.title}评级名称`}
                             className="surface-inset w-full px-3 py-2 text-[13px] outline-none disabled:opacity-60"
                           />
-                          <span className="text-[11px] text-[var(--text-tertiary)]">
-                            例如: {defaultLabel}
-                          </span>
                         </div>
                       );
                     })}
@@ -1862,11 +1855,10 @@ export function ThemeManage() {
                 id="set-hidden"
                 kicker="隐藏"
                 title="隐藏节点"
-                description="在此填写的节点会从首页彻底移除：不显示卡片，也不计入在线数、累计流量、实时带宽与资产等所有统计。对所有访客生效，清空即可恢复。"
                 aside={<EyeOff size={16} />}
               >
                 <label className="flex min-w-0 flex-col gap-2">
-                  <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                  <span className="setting-field-label">
                     隐藏列表
                   </span>
                   <textarea
@@ -1875,8 +1867,9 @@ export function ThemeManage() {
                     placeholder="每行一个节点名称 / UUID，也可以用逗号分隔"
                     className="surface-inset min-h-[112px] w-full resize-y px-3 py-2 text-[13px] outline-none"
                   />
-                  <span className="text-[11px] text-[var(--text-tertiary)]">
-                    已隐藏 {draftHiddenNodes.length} 个节点。按名称或 UUID 匹配，大小写不敏感。
+                  <span className="setting-hint">
+                    已隐藏 {draftHiddenNodes.length} 个节点。按名称或 UUID 匹配、大小写不敏感；隐藏的节点
+                    不显示卡片，也不计入在线数、流量、带宽与资产等任何统计，清空即恢复。
                   </span>
                 </label>
               </InstancePanel>
@@ -1889,13 +1882,12 @@ export function ThemeManage() {
                 id="set-card"
                 kicker="卡片"
                 title="卡片显示项"
-                description="分别管理跨卡片视图的功能入口，以及小卡片专属的信息密度。"
                 aside={<Rows3 size={16} />}
               >
                 <div>
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                    <span className="text-[13px] font-medium text-[var(--text-primary)]">跨视图设置</span>
-                    <span className="text-[11px] text-[var(--text-tertiary)]">
+                  <div className="setting-subhead">
+                    <span className="setting-subhead-title">跨视图设置</span>
+                    <span className="setting-hint">
                       适用于多个卡片尺寸，具体范围以每项说明为准。
                     </span>
                   </div>
@@ -1911,9 +1903,9 @@ export function ThemeManage() {
                 </div>
 
                 <div className="mt-4">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                    <span className="text-[13px] font-medium text-[var(--text-primary)]">小卡片专属</span>
-                    <span className="text-[11px] text-[var(--text-tertiary)]">
+                  <div className="setting-subhead">
+                    <span className="setting-subhead-title">小卡片专属</span>
+                    <span className="setting-hint">
                       控制小卡片中间信息块的密度；实时速率始终显示。
                     </span>
                   </div>
@@ -1951,7 +1943,6 @@ export function ThemeManage() {
                 id="set-cost"
                 kicker="花费"
                 title="服务器花费"
-                description="资产统计页（/assets）使用实时汇率计算年化总支出、月均支出与剩余价值；忽略列表中的节点不会计入费用。两个入口开关都关闭时，直接访问资产页也会跳回首页。"
                 aside={<CircleDollarSign size={16} />}
               >
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
@@ -1966,12 +1957,12 @@ export function ThemeManage() {
                     <ToggleRow
                       field="showCostSummaryFloatingButton"
                       title="显示资产悬浮按钮"
-                      desc="卡内入口不可用时（总览隐藏或其开关关闭），以悬浮按钮进入资产统计页。"
+                      desc="卡内入口不可用时（总览隐藏或其开关关闭），以悬浮按钮进入资产统计页。两个入口都关掉时，直接访问资产页会跳回首页。"
                       checked={draft.showCostSummaryFloatingButton}
                       onPatch={patch}
                     />
                     <label className="flex flex-col gap-2">
-                      <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                      <span className="setting-field-label">
                         实时汇率接口
                       </span>
                       <input
@@ -1989,7 +1980,7 @@ export function ThemeManage() {
                     </label>
                   </div>
                   <label className="flex min-w-0 flex-col gap-2">
-                    <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                    <span className="setting-field-label">
                       忽略计费节点
                     </span>
                     <textarea
@@ -2006,12 +1997,7 @@ export function ThemeManage() {
                 id="set-premium"
                 kicker="溢价"
                 title="收购溢价"
-                description="填写实际收购价（人民币），系统使用当前价格、周期、到期日和汇率回算收购日的剩余价值，再固化溢价（收购价 − 收购日剩余价值，可正可负）。后续续费和汇率变化不会自动改写；主动修改收购日期时会重新计算并固化。收购日期同时用于溢价月摊与尚未摊销价值；免费节点的收购价全额记为溢价，留空即清除记录。"
-                aside={
-                  <div className="text-[11px] text-[var(--text-tertiary)]">
-                    {clientsLoading ? "载入中" : `已设置 ${premiumConfiguredCount} 个节点`}
-                  </div>
-                }
+                aside={<Coins size={16} />}
                 titleAction={
                   <button
                     type="button"
@@ -2027,6 +2013,10 @@ export function ThemeManage() {
                 {/* 一台节点一行、还带日期与金额输入，节点多时这块比整页其余设置都长：默认收起。 */}
                 {showPremiumList ? (
                   <div className="flex flex-col gap-3">
+                    <p className="setting-hint">
+                      按收购日的剩余价值回算并固化溢价（收购价 − 当日剩余价值，可正可负），之后续费与汇率
+                      变化都不改写；改收购日期会重算，留空即清除记录。
+                    </p>
                     <label className="surface-inset flex items-center gap-2 px-3 py-2">
                       <Search size={14} className="text-[var(--text-tertiary)]" />
                       <input
@@ -2070,9 +2060,11 @@ export function ThemeManage() {
                   </div>
                 ) : (
                   <p className="surface-inset px-4 py-3 text-[12px] text-[var(--text-tertiary)]">
-                    {premiumConfiguredCount > 0
-                      ? `已为 ${premiumConfiguredCount} 个节点记了收购溢价，展开可以查看和修改。`
-                      : "还没有节点记收购溢价。展开后填写收购价即可。"}
+                    {clientsLoading
+                      ? "正在载入节点…"
+                      : premiumConfiguredCount > 0
+                        ? `已为 ${premiumConfiguredCount} 个节点记了收购溢价，展开可以查看和修改。`
+                        : "还没有节点记收购溢价。展开后填写收购价即可。"}
                   </p>
                 )}
               </InstancePanel>
@@ -2085,21 +2077,19 @@ export function ThemeManage() {
                 id="set-ping"
                 kicker="线路"
                 title="主页延迟检测"
-                // 用模板字符串拼：JSX 文本换行会在「配置，」和「主题读不到」之间多出一个空格。
-                description={`CF-Server-Monitor 的探测线路由后端固定，共 ${sortedTasks.length} 条（${sortedTasks
-                  .map((task) => task.name)
-                  .join(" / ")}）；探测目标与探测方式都在后台的服务器编辑里配置，主题读不到，没配探测目标的线路没有数据。`}
+                aside={<Activity size={16} />}
               >
                 <div className="flex flex-col gap-4">
                   {/* 大卡片 / 小卡片显示哪种：单线路还是多线路。原来是个复选框，和下面的单线路设置
                       混在一排，看不出「哪些设置属于哪种模式」—— 换成分段切换，选中哪种就只展开哪种的设置。 */}
                   <div className="surface-inset px-4 py-4">
                     <div className="min-w-0">
-                      <span className="block text-[13px] font-medium text-[var(--text-primary)]">
+                      <span className="block setting-subhead-title">
                         大卡片 / 小卡片显示
                       </span>
-                      <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-                        迷你卡片与列表放不下多行，始终按单线路显示，不受这里影响。
+                      <span className="mt-1 block setting-hint">
+                        迷你卡片与列表放不下多行，始终按单线路显示，不受这里影响。探测线路由后端固定，
+                        共 {sortedTasks.length} 条；没配探测目标的线路没有数据。
                       </span>
                     </div>
                     {/* 整行、等宽、强调色实心：这是本板块的总开关，得一眼看出选中的是哪种。 */}
@@ -2127,11 +2117,11 @@ export function ThemeManage() {
 
                     {draft.enableHomepageMultiPing ? (
                       <div className="mt-4 border-t border-[var(--hairline)] pt-4">
-                        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                          <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                        <div className="setting-subhead">
+                          <span className="setting-field-label">
                             显示这些线路（按顺序）
                           </span>
-                          <span className="text-[11px] text-[var(--text-tertiary)]">
+                          <span className="setting-hint">
                             已选 {draft.homepageMultiPingTaskIds.length} / {multiPingSlotLimit} 条
                           </span>
                         </div>
@@ -2144,7 +2134,7 @@ export function ThemeManage() {
                             <div key={slot} className="min-w-0">
                               <label
                                 htmlFor={`multi-ping-slot-${slot}`}
-                                className="mb-1.5 block text-[11px] font-medium text-[var(--text-secondary)]"
+                                className="mb-1.5 block setting-field-label"
                               >
                                 线路 {slot + 1}
                               </label>
@@ -2219,7 +2209,7 @@ export function ThemeManage() {
                         </div>
                       </div>
                     ) : (
-                      <p className="mt-4 border-t border-[var(--hairline)] pt-4 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                      <p className="mt-4 border-t border-[var(--hairline)] pt-4 setting-hint">
                         每台节点只显示一条线路，用下面「单线路设置」里的默认线路；个别节点想看别的线路，
                         用下面的「逐节点指定线路」。
                       </p>
@@ -2231,10 +2221,10 @@ export function ThemeManage() {
                   <div className="surface-inset px-4 py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <span className="block text-[13px] font-medium text-[var(--text-primary)]">
+                        <span className="block setting-subhead-title">
                           单线路设置
                         </span>
-                        <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                        <span className="mt-1 block setting-hint">
                           {draft.enableHomepageMultiPing
                             ? "大/小卡片当前走多线路，用不到这组；迷你卡片与列表仍按单线路显示，要改再展开。"
                             : "作用于所有视图。"}
@@ -2245,19 +2235,10 @@ export function ThemeManage() {
                           type="button"
                           onClick={() => setShowSingleLineSettings((open) => !open)}
                           aria-expanded={showSingleLineSettings}
-                          className="surface-inset inline-flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-500)] hover:text-[var(--text-primary)]"
+                          className="theme-manage-button is-compact shrink-0"
                         >
-                          {showSingleLineSettings ? (
-                            <>
-                              <ChevronUp size={13} />
-                              收起
-                            </>
-                          ) : (
-                            <>
-                              <ChevronDown size={13} />
-                              展开设置
-                            </>
-                          )}
+                          {showSingleLineSettings ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                          {showSingleLineSettings ? "收起" : "展开"}
                         </button>
                       ) : null}
                     </div>
@@ -2267,11 +2248,11 @@ export function ThemeManage() {
                         {/* 默认线路：原来是标题行右端一个窄下拉，混在一堆文字里看不见。挪到正文、
                             用和模式切换同一套整行分段控件，选中项强调色实心。 */}
                         <div className="mt-4 border-t border-[var(--hairline)] pt-4">
-                          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                            <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                          <div className="setting-subhead">
+                            <span className="setting-field-label">
                               默认线路
                             </span>
-                            <span className="text-[11px] text-[var(--text-tertiary)]">
+                            <span className="setting-hint">
                               没单独指定的节点都走这条
                             </span>
                           </div>
@@ -2305,7 +2286,7 @@ export function ThemeManage() {
                               );
                             })}
                           </div>
-                          <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                          <p className="mt-2 setting-hint">
                             新加的节点也自动跟着它，不用回来一台台绑；个别节点想看别的线路，用下面的「逐节点指定线路」。
                           </p>
                         </div>
@@ -2328,7 +2309,7 @@ export function ThemeManage() {
                 id="set-ping-bindings"
                 kicker="绑定"
                 title="逐节点指定线路"
-                description="给单台节点指定和默认线路不同的线路；没指定的节点都走上面的默认线路。迷你卡片与列表始终按单线路显示，这里指定的对它们同样生效。"
+                aside={<Network size={16} />}
                 titleAction={
                   <button
                     type="button"
@@ -2339,11 +2320,6 @@ export function ThemeManage() {
                     {showNodeBindings ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                     {showNodeBindings ? "收起" : "展开"}
                   </button>
-                }
-                aside={
-                  <div className="text-[11px] text-[var(--text-tertiary)]">
-                    {clientsLoading ? "载入中" : `已指定 ${assignedNodeCount} / ${sortedClients.length} 台`}
-                  </div>
                 }
               >
                 {/* 节点多的时候这块最长（每条线路一张可展开的卡片），默认收起，要绑才展开。 */}
@@ -2409,9 +2385,11 @@ export function ThemeManage() {
                   </div>
                 ) : (
                   <p className="surface-inset px-4 py-3 text-[12px] text-[var(--text-tertiary)]">
-                    {assignedNodeCount > 0
-                      ? `已有 ${assignedNodeCount} 台节点单独指定了线路，展开可以查看和修改。`
-                      : "还没有节点单独指定线路。展开后按线路勾选要绑定的节点。"}
+                    {clientsLoading
+                      ? "正在载入节点…"
+                      : assignedNodeCount > 0
+                        ? `已有 ${assignedNodeCount} / ${sortedClients.length} 台节点单独指定了线路，展开可以查看和修改。`
+                        : "还没有节点单独指定线路。展开后按线路勾选要绑定的节点。"}
                   </p>
                 )}
               </InstancePanel>

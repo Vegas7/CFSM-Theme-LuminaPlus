@@ -800,6 +800,35 @@ body::after {
   display: none;
 }
 
+/* 设置页的排版口径，一处改全页跟着改。分区标题 / 小节标题 / 字段名 / 说明四档，别再在 JSX 里写
+   text-[13px] font-medium 这种一次性组合 —— 之前同一层级的字在不同分区有 12px、13px 三四种写法。 */
+.setting-subhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-bottom: 8px;
+}
+
+.setting-subhead-title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.setting-field-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 560;
+}
+
+.setting-hint {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
 .theme-manage-button {
   display: inline-flex;
   align-items: center;
