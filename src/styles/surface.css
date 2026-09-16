@@ -762,19 +762,6 @@ body::after {
   box-shadow: 0 10px 24px -20px rgba(0, 0, 0, 0.55);
 }
 
-/* 顶栏和内容之间那道缝：顶栏本身不透明，缝里却会露出正滚过去的设置，看着就贴上来了。
-   这层比顶栏四周各大一圈（含圆角两侧），用页面底色糊住缝；站点设了背景图时按磨砂处理，
-   不至于糊出一条和背景对不上的实色带。改缝宽（inset 的第三个值）要跟着改 .theme-tab-rail 的 sticky top。 */
-.theme-topbar::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  inset: -24px -18px -20px;
-  background: color-mix(in srgb, var(--bg-0) 82%, transparent);
-  backdrop-filter: blur(18px);
-  pointer-events: none;
-}
-
 .theme-topbar-back {
   flex: none;
 }
@@ -789,18 +776,21 @@ body::after {
 }
 
 @media (max-width: 720px) {
-  /* 窄屏只留箭头：站长那行「主题设置 + 同步状态」才挤得下一行；访客四个按钮会换到第二行横滑。 */
+  /* 窄屏只留箭头：站长那行「主题设置 + 同步状态」才挤得下一行；访客的按钮会换到第二行横滑。 */
   .theme-topbar-back span {
     display: none;
   }
+
 }
 
 .theme-manage-toolbar-actions {
   display: inline-flex;
+  /* 靠右用 margin-left:auto，不用 justify-content:flex-end —— 窄屏换行后按钮放不下时，
+     flex-end 会把最左边那个顶出容器外，还滚不回来（溢出方向反了）。 */
   margin-left: auto;
   max-width: 100%;
   flex-wrap: nowrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 10px;
   overflow-x: auto;
   scrollbar-width: none;
@@ -913,17 +903,29 @@ body::after {
  * 九个分区一条直线排下来时，桌面 5.4 屏、手机 6.7 屏，改一项要扫整页；
  * 现在一次只渲染一组，导航在桌面端粘在左边、手机端是顶部一条横滑标签；顶栏也钉住。
  * ------------------------------------------------------------------ */
+/* 设置区是独立滚动区：高度由 JS 量出来（顶栏到页脚之间），页面本身正好不用滚，
+   卡片只在自己的框里滚，永远不会滑到顶栏那一块去 —— 两个框之间始终是同一道缝。 */
 .theme-manage-body {
   display: grid;
   gap: 16px;
   align-items: start;
+  height: var(--theme-body-height, auto);
+  min-height: 0;
 }
 
 .theme-manage-sections {
   display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
   flex-direction: column;
   gap: 20px;
-  min-width: 0;
+  overflow-y: auto;
+  /* 滚到头不要把整页也带着滚。 */
+  overscroll-behavior: contain;
+  /* 滚动条贴着卡片会压住圆角，留一点道。 */
+  padding-right: 4px;
+  scrollbar-width: thin;
 }
 
 .theme-tab-rail {
@@ -987,11 +989,10 @@ body::after {
   }
 
   .theme-tab-rail {
-    position: sticky;
-    /* 顶栏 56px + 它下面那层 20px 的遮挡，再留一点缝。 */
-    top: 80px;
+    /* 设置区自己滚，导航不用再 sticky；分组多到放不下时它自己滚。 */
+    height: 100%;
     flex-direction: column;
-    overflow: visible;
+    overflow-y: auto;
   }
 
   .theme-tab {

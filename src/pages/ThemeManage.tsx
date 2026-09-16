@@ -728,8 +728,14 @@ function isThemeTabId(value: string | null): value is ThemeTabId {
   return value != null && THEME_TABS.some((tab) => tab.id === value);
 }
 
-/** 登录站长在设置页停手多久自动保存（之后还有自动同步自己的防抖，见 SITE_THEME_SYNC_DEBOUNCE_MS）。 */
+/** 停手多久自动保存（站长那边之后还有自动同步自己的防抖，见 SITE_THEME_SYNC_DEBOUNCE_MS）。 */
 const THEME_AUTO_SAVE_DEBOUNCE_MS = 600;
+
+/** 设置区底部与页脚之间再留一点空（各层的内边距另算）。 */
+const BODY_BOTTOM_GAP = 2;
+
+/** 窗口再矮也给设置区留这么高，剩下的让整页滚。 */
+const MIN_BODY_HEIGHT = 320;
 
 /**
  * 工具栏上替代保存按钮的状态：谁都不用点保存 —— 站长的改动同步到后端，访客的存本机。
@@ -813,6 +819,8 @@ export function ThemeManage() {
   const [premiumSearch, setPremiumSearch] = useState("");
   // 访客的「已保存到本机」：这次会话存过一次才显示（站长那边看同步状态）。
   const [savedLocally, setSavedLocally] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const sectionsRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -841,6 +849,53 @@ export function ThemeManage() {
     },
     [],
   );
+  /**
+   * 设置区是独立滚动区：顶栏固定，卡片只在自己的区域里滚，永远不会滑到顶栏那一块去。
+   * 高度只能量出来 —— 顶栏高度随登录态和换行变化，页脚高度也随站点信息变。量完页面本身正好不用滚，
+   * 只有窗口特别矮时才退回整页滚动（min-height 兜底）。
+   */
+  useEffect(() => {
+    const element = bodyRef.current;
+    if (!element) return;
+    const measure = () => {
+      const rect = element.getBoundingClientRect();
+      // 只拿「和设置区自身高度无关」的量来算，否则每量一次都会漂：
+      // 设置区在文档里的上沿（只受顶栏影响）、页脚自身高度、main 的下留白。
+      // 别去量 main 或页脚的位置 —— 它们被这块撑着走，量出来会越算越大 / 越算越小。
+      const top = rect.top + window.scrollY;
+      const main = element.closest("main");
+      // 设置区到 main 之间每一层的下内边距（页面下留白、.theme-manage 的 py-2 …）都要算上，
+      // 少算一层页面就会多出那么几像素的滚动。
+      let padBottom = 0;
+      for (
+        let node: HTMLElement | null = element.parentElement;
+        node && main && (node === main || main.contains(node));
+        node = node.parentElement
+      ) {
+        const style = window.getComputedStyle(node);
+        padBottom +=
+          parseFloat(style.paddingBottom || "0") + parseFloat(style.borderBottomWidth || "0");
+        if (node === main) break;
+      }
+      const footerHeight =
+        document.querySelector(".site-footer")?.getBoundingClientRect().height ?? 0;
+      const available = window.innerHeight - top - footerHeight - padBottom - BODY_BOTTOM_GAP;
+      element.style.setProperty("--theme-body-height", `${Math.max(MIN_BODY_HEIGHT, available)}px`);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    // 顶栏换行（访客的按钮挤到第二行）、页脚多一行都会改变可用高度。
+    const observer = new ResizeObserver(measure);
+    const topbar = document.querySelector(".theme-topbar");
+    const footer = document.querySelector(".site-footer");
+    if (topbar) observer.observe(topbar);
+    if (footer) observer.observe(footer);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer.disconnect();
+    };
+  }, []);
+
   const openTab = useCallback(
     (next: ThemeTabId) => {
       // replace：换分组不该在浏览器历史里堆一串，按返回要回首页。view 等其它参数原样保留。
@@ -852,7 +907,8 @@ export function ThemeManage() {
         },
         { replace: true },
       );
-      window.scrollTo({ top: 0 });
+      // 换组回到这一组的顶部：滚的是设置区，不是整个页面。
+      sectionsRef.current?.scrollTo({ top: 0 });
     },
     [setSearchParams],
   );
@@ -1418,7 +1474,7 @@ export function ThemeManage() {
         </div>
       )}
 
-      <div className="theme-manage-body">
+      <div className="theme-manage-body" ref={bodyRef}>
         <nav className="theme-tab-rail" aria-label="设置分组">
           {THEME_TABS.map(({ id, label, hint, icon: Icon }) => (
             <button
@@ -1436,7 +1492,7 @@ export function ThemeManage() {
           ))}
         </nav>
 
-        <div className="theme-manage-sections">
+        <div className="theme-manage-sections" ref={sectionsRef}>
           {activeTab === "appearance" && (
             <>
               <InstancePanel
