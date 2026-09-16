@@ -80,13 +80,41 @@ describe("normalizeThemeSettings", () => {
     expect(normalizeThemeSettings({ homeSortField: "nope" } as never).homeSortField).toBe("default");
   });
 
-  it("keeps fake ping off unless explicitly enabled", () => {
-    expect(normalizeThemeSettings({}).fakePingForUnbound).toBe(false);
-    expect(normalizeThemeSettings({ fakePingForUnbound: true }).fakePingForUnbound).toBe(true);
-    // 非布尔真值不算显式开启。
+  it("folds the old pair of asset-entry switches into one", () => {
+    // 老配置有两个开关（卡内按钮 / 悬浮按钮）：任一开着就还留着入口，放哪儿由首页自己判断。
+    expect(normalizeThemeSettings({}).showCostSummary).toBe(true);
     expect(
-      normalizeThemeSettings({ fakePingForUnbound: "yes" } as never).fakePingForUnbound,
+      normalizeThemeSettings({
+        showCostSummary: false,
+        showCostSummaryFloatingButton: true,
+      } as never).showCostSummary,
+    ).toBe(true);
+    expect(
+      normalizeThemeSettings({
+        showCostSummary: false,
+        showCostSummaryFloatingButton: false,
+      } as never).showCostSummary,
     ).toBe(false);
+  });
+
+  it("clamps the renewal reminder window and treats 0 as off", () => {
+    expect(normalizeThemeSettings({}).renewalReminderDays).toBe(7);
+    expect(normalizeThemeSettings({ renewalReminderDays: 0 } as never).renewalReminderDays).toBe(0);
+    expect(normalizeThemeSettings({ renewalReminderDays: 999 } as never).renewalReminderDays).toBe(60);
+    expect(normalizeThemeSettings({ renewalReminderDays: -3 } as never).renewalReminderDays).toBe(0);
+    // 写坏了回到默认，而不是 0（0 等于悄悄关掉提醒）。
+    expect(normalizeThemeSettings({ renewalReminderDays: "later" } as never).renewalReminderDays).toBe(7);
+  });
+
+  it("keeps the homepage default group only when it is a non-empty string", () => {
+    expect(normalizeThemeSettings({}).homeDefaultGroup).toBe("");
+    expect(normalizeThemeSettings({ homeDefaultGroup: " 生产 " } as never).homeDefaultGroup).toBe("生产");
+    expect(normalizeThemeSettings({ homeDefaultGroup: 12 } as never).homeDefaultGroup).toBe("");
+  });
+
+  it("puts offline nodes last unless asked otherwise", () => {
+    expect(normalizeThemeSettings({}).offlineNodesFirst).toBe(false);
+    expect(normalizeThemeSettings({ offlineNodesFirst: true } as never).offlineNodesFirst).toBe(true);
   });
 
   it("parses hiddenNodes from a delimited string and dedupes", () => {

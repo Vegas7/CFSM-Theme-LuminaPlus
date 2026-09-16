@@ -120,6 +120,36 @@ describe("sortHomeNodes", () => {
   });
 });
 
+describe("离线节点置顶（offlineNodesFirst）", () => {
+  it("排在所有在线节点之前，段内仍按 weight", () => {
+    const nodes = [
+      node({ uuid: "a", weight: 2 }),
+      node({ uuid: "off2", online: false, weight: 9 }),
+      node({ uuid: "off1", online: false, weight: 1 }),
+      node({ uuid: "b", weight: 8 }),
+    ];
+    expect(order(nodes, "default", "asc", ctx({ offlineFirst: true }))).toEqual([
+      "off1",
+      "off2",
+      "a",
+      "b",
+    ]);
+  });
+
+  it("冻结顺序恢复时也跟着置顶", () => {
+    const nodes = [
+      node({ uuid: "a" }),
+      node({ uuid: "off", online: false }),
+      node({ uuid: "b" }),
+    ];
+    expect(reconcileSpeedOrder(nodes, ["a", "off", "b"], true).map((n) => n.uuid)).toEqual([
+      "off",
+      "a",
+      "b",
+    ]);
+  });
+});
+
 describe("reconcileSpeedOrder", () => {
   it("keeps frozen rank but immediately sinks a node that went offline between resorts", () => {
     const nodes = [

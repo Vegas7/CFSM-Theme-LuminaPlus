@@ -8,7 +8,6 @@ import {
   getVisibleRenewalReminders,
   RENEWAL_SNOOZE_DAYS,
   RENEWAL_SNOOZE_MS,
-  RENEWAL_WARNING_DAYS,
   type RenewalReminderPreferences,
   type RenewalReminderSource,
 } from "@/utils/renewalReminder";
@@ -60,7 +59,14 @@ function AssetLink() {
   );
 }
 
-export function RenewalReminder({ nodes }: { nodes: RenewalReminderSource[] }) {
+export function RenewalReminder({
+  nodes,
+  warningDays,
+}: {
+  nodes: RenewalReminderSource[];
+  /** 提前几天提醒；站长在设置里定，0 时首页压根不渲染这个入口。 */
+  warningDays: number;
+}) {
   const [open, setOpen] = useState(false);
   const [clock, setClock] = useState(() => Date.now());
   const [preferences, setPreferences] = useState(readPreferences);
@@ -70,8 +76,8 @@ export function RenewalReminder({ nodes }: { nodes: RenewalReminderSource[] }) {
   const panelId = useId();
   const titleId = useId();
   const reminders = useMemo(
-    () => getRenewalReminders(nodes, clock, { requireOnlineForExpired: true }),
-    [clock, nodes],
+    () => getRenewalReminders(nodes, clock, { requireOnlineForExpired: true, warningDays }),
+    [clock, nodes, warningDays],
   );
   const visibleReminders = useMemo(
     () => getVisibleRenewalReminders(reminders, preferences, clock),
@@ -191,7 +197,7 @@ export function RenewalReminder({ nodes }: { nodes: RenewalReminderSource[] }) {
                 <h2 id={titleId}>续费提醒</h2>
                 <span className="renewal-reminder-count">{visibleReminders.length}</span>
               </div>
-              <p>{visibleReminders.length} 台节点将在 {RENEWAL_WARNING_DAYS} 天内到期</p>
+              <p>{visibleReminders.length} 台节点将在 {warningDays} 天内到期</p>
             </div>
             <button
               ref={closeRef}

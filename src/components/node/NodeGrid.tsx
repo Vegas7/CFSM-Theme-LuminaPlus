@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CircleDollarSign } from "lucide-react";
@@ -110,6 +110,8 @@ function HomeOverviewCards({
   bandwidthRatingLabels,
   assetRatingLabels,
   showDetailButton,
+  showAssetCard,
+  renewalReminderDays,
   renewalNodes,
   dense,
 }: {
@@ -126,6 +128,8 @@ function HomeOverviewCards({
   bandwidthRatingLabels: string;
   assetRatingLabels: string;
   showDetailButton: boolean;
+  showAssetCard: boolean;
+  renewalReminderDays: number;
   renewalNodes: RenewalReminderSource[];
 }) {
   const [trafficValue, trafficUnit] = formatBytes(
@@ -248,10 +252,14 @@ function HomeOverviewCards({
         </div>
       </article>
 
+      {showAssetCard && (
       <article className="overview-card" data-metric="asset">
         <div className="overview-card-head">
           <span className="overview-card-label">资产概览</span>
-          {showDetailButton && <RenewalReminder nodes={renewalNodes} />}
+          {/* 提醒天数设成 0 时这个组件没有提醒可显示，会退成资产页入口图标。 */}
+          {showDetailButton && (
+            <RenewalReminder nodes={renewalNodes} warningDays={renewalReminderDays} />
+          )}
         </div>
         <div className="overview-card-main">
           <p className="overview-card-value">{remainingValue}</p>
@@ -263,6 +271,7 @@ function HomeOverviewCards({
           {renderRating(assetRating)}
         </div>
       </article>
+      )}
     </section>
   );
 }
@@ -426,15 +435,12 @@ export function NodeGrid() {
   );
   const showHomeOverview = themeSettings.isReady && themeSettings.showHomeOverview;
   const hasNodes = visibleMeta.length > 0;
-  // 卡内入口与悬浮入口互斥，避免重复操作入口。
-  const showAssetCard = showHomeOverview && hasNodes;
-  const showCostDetailButton =
-    showAssetCard && themeSettings.isReady && themeSettings.showCostSummary;
-  const showCostFloatingButton =
-    themeSettings.isReady &&
-    themeSettings.showCostSummaryFloatingButton &&
-    hasNodes &&
-    !showCostDetailButton;
+  // 「资产概览」把每月花多少钱亮给所有访客，单独一个开关，不跟着整排总览走。
+  const showAssetCard = showHomeOverview && hasNodes && themeSettings.showAssetOverview;
+  // 资产页入口只有一个开关：资产卡在就放卡内按钮，不在就用悬浮按钮，两个位置互斥。
+  const showCostEntry = themeSettings.isReady && themeSettings.showCostSummary && hasNodes;
+  const showCostDetailButton = showCostEntry && showAssetCard;
+  const showCostFloatingButton = showCostEntry && !showAssetCard;
 
   useEffect(() => {
     if (!showCostDetailButton && !showCostFloatingButton) return;
@@ -500,6 +506,17 @@ export function NodeGrid() {
       ),
     [visibleNodes, themeSettings.homeGroupOrder, themeSettings.isReady],
   );
+  // 站长设的默认分组只在首屏套一次：后面访客自己点了哪组就是哪组，配置回流不该把人拽回去。
+  // 后端没有这个分组（改名 / 删了）时留在「全部」。
+  const defaultGroupApplied = useRef(false);
+  useEffect(() => {
+    if (defaultGroupApplied.current) return;
+    if (!themeSettings.isReady || groupOptions.length === 0) return;
+    defaultGroupApplied.current = true;
+    const preset = themeSettings.homeDefaultGroup;
+    if (preset && groupOptions.includes(preset)) setSelectedGroup(preset);
+  }, [groupOptions, themeSettings.homeDefaultGroup, themeSettings.isReady]);
+
   const groupFilteredNodes = useMemo(
     () =>
       selectedGroup === HOME_ALL_GROUP
@@ -521,6 +538,7 @@ export function NodeGrid() {
   );
   // 排序在分组筛选之后。离线永远沉底(写死,见 homeSort);实时网速走防抖(键平滑+滞回+5s 重排)。
   const orderedNodes = useHomeNodeOrder({
+    offlineFirst: themeSettings.isReady && themeSettings.offlineNodesFirst,
     nodes: filteredNodes,
     field: sortField,
     direction: sortDirection,
@@ -656,6 +674,10 @@ export function NodeGrid() {
           overview={displayOverview}
           dense={mode === "mini" || mode === "list"}
           showDetailButton={showCostDetailButton}
+          showAssetCard={showAssetCard}
+          renewalReminderDays={
+            themeSettings.isReady ? themeSettings.renewalReminderDays : 0
+          }
           renewalNodes={renewalNodes}
           costSummary={costSummary}
           costLoading={costLoading}

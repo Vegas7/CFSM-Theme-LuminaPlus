@@ -73,6 +73,7 @@ import {
   type CostPremiumEntry,
 } from "@/utils/cost";
 import { normalizeNodeIdentityList } from "@/utils/nodeIdentity";
+import { MAX_RENEWAL_REMINDER_DAYS } from "@/utils/renewalReminder";
 import {
   dedupeGroupLabels,
   normalizeHomeGroupOrder,
@@ -280,18 +281,20 @@ function pickManagedThemeSettings(settings: ResolvedThemeSettings) {
     homepageDefaultPingTaskId: settings.homepageDefaultPingTaskId,
     enableHomepageMultiPing: settings.enableHomepageMultiPing,
     homepageMultiPingTaskIds: settings.homepageMultiPingTaskIds,
-    fakePingForUnbound: settings.fakePingForUnbound,
     showHomeOverview: settings.showHomeOverview,
+    showAssetOverview: settings.showAssetOverview,
     showGroupTabs: settings.showGroupTabs,
     showRegionBar: settings.showRegionBar,
     showCardGroup: settings.showCardGroup,
     showCardPrice: settings.showCardPrice,
     homeGroupOrder: settings.homeGroupOrder,
+    homeDefaultGroup: settings.homeDefaultGroup,
     enableHomeSort: settings.enableHomeSort,
     homeSortField: settings.homeSortField,
     homeSortDirection: settings.homeSortDirection,
+    offlineNodesFirst: settings.offlineNodesFirst,
     showCostSummary: settings.showCostSummary,
-    showCostSummaryFloatingButton: settings.showCostSummaryFloatingButton,
+    renewalReminderDays: settings.renewalReminderDays,
     showOverviewRatings: settings.showOverviewRatings,
     showTrafficRating: settings.showTrafficRating,
     showBandwidthRating: settings.showBandwidthRating,
@@ -1638,6 +1641,13 @@ export function ThemeManage() {
                     onPatch={patch}
                   />
                   <ToggleRow
+                    field="showAssetOverview"
+                    title="显示资产概览"
+                    desc="总览里那张写着每月花多少钱的卡片。不想把开销公开就关掉，其余总览卡不受影响。"
+                    checked={draft.showAssetOverview}
+                    onPatch={patch}
+                  />
+                  <ToggleRow
                     field="showGroupTabs"
                     title="显示分组筛选"
                     desc="根据后端节点分组生成首页 Tab。"
@@ -1726,6 +1736,59 @@ export function ThemeManage() {
                         降序
                       </button>
                     </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <div>
+                    <div className="setting-subhead">
+                      <span className="setting-subhead-title">离线节点</span>
+                      <span className="setting-hint">掉线的排哪边</span>
+                    </div>
+                    <div className="instance-segmented" role="group" aria-label="离线节点位置">
+                      <button
+                        type="button"
+                        data-active={!draft.offlineNodesFirst ? "true" : "false"}
+                        aria-pressed={!draft.offlineNodesFirst}
+                        onClick={() => patch("offlineNodesFirst", false)}
+                      >
+                        排在最后
+                      </button>
+                      <button
+                        type="button"
+                        data-active={draft.offlineNodesFirst ? "true" : "false"}
+                        aria-pressed={draft.offlineNodesFirst}
+                        onClick={() => patch("offlineNodesFirst", true)}
+                      >
+                        排在最前
+                      </button>
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="setting-subhead">
+                      <span className="setting-subhead-title">默认分组</span>
+                      <span className="setting-hint">打开首页时先看哪一组</span>
+                    </div>
+                    <select
+                      value={draft.homeDefaultGroup}
+                      onChange={(event) => patch("homeDefaultGroup", event.target.value)}
+                      aria-label="默认分组"
+                      className="surface-inset w-full px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
+                    >
+                      <option value="">全部</option>
+                      {/* 站点换过分组名时，存着的那个值仍列出来，免得选中项凭空消失。 */}
+                      {draft.homeDefaultGroup !== "" &&
+                        !availableGroups.includes(draft.homeDefaultGroup) && (
+                          <option value={draft.homeDefaultGroup}>
+                            {draft.homeDefaultGroup}（当前没有这个分组）
+                          </option>
+                        )}
+                      {availableGroups.map((group) => (
+                        <option key={group} value={group}>
+                          {group}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -1942,18 +2005,40 @@ export function ThemeManage() {
                   <div className="flex flex-col gap-3">
                     <ToggleRow
                       field="showCostSummary"
-                      title="显示资产页入口按钮"
-                      desc="在首页资产概览卡右上角显示进入资产统计页的按钮。"
+                      title="显示资产统计入口"
+                      desc="进入资产统计页（/assets）的入口：顶部显示资产概览卡时放在卡片右上角，否则用悬浮按钮。关掉后直接访问资产页会跳回首页。"
                       checked={draft.showCostSummary}
                       onPatch={patch}
                     />
-                    <ToggleRow
-                      field="showCostSummaryFloatingButton"
-                      title="显示资产悬浮按钮"
-                      desc="卡内入口不可用时（总览隐藏或其开关关闭），以悬浮按钮进入资产统计页。两个入口都关掉时，直接访问资产页会跳回首页。"
-                      checked={draft.showCostSummaryFloatingButton}
-                      onPatch={patch}
-                    />
+                    <label className="flex flex-col gap-2">
+                      <span className="setting-field-label">续费提醒</span>
+                      <span className="inline-flex items-center gap-2">
+                        <span className="setting-hint">还有</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={MAX_RENEWAL_REMINDER_DAYS}
+                          step={1}
+                          inputMode="numeric"
+                          value={draft.renewalReminderDays}
+                          onChange={(event) => {
+                            if (event.target.value.trim() === "") return;
+                            const next = Number(event.target.value);
+                            if (!Number.isFinite(next)) return;
+                            patch(
+                              "renewalReminderDays",
+                              Math.min(MAX_RENEWAL_REMINDER_DAYS, Math.max(0, Math.round(next))),
+                            );
+                          }}
+                          aria-label="续费提醒天数"
+                          className="surface-inset w-20 px-3 py-2 text-right text-[13px] tabular outline-none"
+                        />
+                        <span className="setting-hint">天到期时，在资产概览卡上提醒</span>
+                      </span>
+                      <span className="setting-hint">
+                        填 0 不提醒。0~{MAX_RENEWAL_REMINDER_DAYS} 天，月付填小一点、年付可以填大一点。
+                      </span>
+                    </label>
                     <label className="flex flex-col gap-2">
                       <span className="setting-field-label">
                         实时汇率接口
@@ -2318,13 +2403,6 @@ export function ThemeManage() {
                       })}
                   </div>
 
-                  <ToggleRow
-                    field="fakePingForUnbound"
-                    title="未绑定节点显示模拟延迟"
-                    desc="所选线路没有探测数据的在线节点显示前端生成的模拟数据（延迟 1-10ms、丢包 0%）。仅用于视觉统一，不代表真实网络质量；后台没有为该节点配置对应线路的探测目标时会出现这种情况。"
-                    checked={draft.fakePingForUnbound}
-                    onPatch={patch}
-                  />
                 </div>
               </InstancePanel>
             </>

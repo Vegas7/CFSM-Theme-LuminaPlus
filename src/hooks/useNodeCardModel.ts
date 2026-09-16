@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { useFakePingFallback } from "@/hooks/useFakePing";
 import { useHourlyClock, useMinuteClock } from "@/hooks/useClock";
 import { useNodeCardSnapshots, useShowThreeNetDetails } from "@/hooks/useNode";
 import {
@@ -60,7 +59,6 @@ export function useNodeCardModel(
   const {
     showCardGroup,
     showCardPrice,
-    fakePingForUnbound,
     homepagePingBindings,
     enableHomepageMultiPing,
     homepageMultiPingTaskIds,
@@ -99,13 +97,7 @@ export function useNodeCardModel(
     [homepagePingBindings, multiPingActive, uuid],
   );
   const now = useHourlyClock();
-  const ping = useFakePingFallback(
-    uuid,
-    realPing,
-    metrics?.online === true,
-    fakePingForUnbound && !multiPingActive,
-    homepagePingBindings,
-  );
+  const ping = realPing;
   // 状态跟随每条任务数据进入 Store,不再订阅全局 isRefreshing。这样后台轮询开始/结束
   // 时不会让所有节点卡片仅因一个布尔值变化而重渲染。
   const pingLoading =

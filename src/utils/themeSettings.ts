@@ -8,6 +8,10 @@ import {
   type CostPremiumEntry,
 } from "@/utils/cost";
 import { normalizeNodeIdentityList } from "@/utils/nodeIdentity";
+import {
+  DEFAULT_RENEWAL_REMINDER_DAYS,
+  MAX_RENEWAL_REMINDER_DAYS,
+} from "@/utils/renewalReminder";
 import { normalizeHomeGroupOrder } from "@/utils/homeNodes";
 import {
   HOME_SORT_NATURAL_DIRECTION,
@@ -44,18 +48,24 @@ export interface ResolvedThemeSettings {
   enableHomepageMultiPing: boolean;
   homepageMultiPingTaskIds: number[];
   homepagePingLineOverrides: PingLineOverridesByNode;
-  fakePingForUnbound: boolean;
   showHomeOverview: boolean;
+  /** 顶部总览里的「资产概览」卡（把每月花多少钱亮给所有访客，单独给个开关）。 */
+  showAssetOverview: boolean;
   showGroupTabs: boolean;
   showRegionBar: boolean;
   showCardGroup: boolean;
   showCardPrice: boolean;
   homeGroupOrder: string[];
+  /** 首页默认选中的分组（空 = 全部）。后端没有这个分组时回退到全部。 */
+  homeDefaultGroup: string;
   enableHomeSort: boolean;
   homeSortField: HomeSortField;
   homeSortDirection: HomeSortDirection;
+  /** 离线节点排最前面；默认 false = 置底。 */
+  offlineNodesFirst: boolean;
   showCostSummary: boolean;
-  showCostSummaryFloatingButton: boolean;
+  /** 还有几天到期开始提醒；0 = 不提醒。 */
+  renewalReminderDays: number;
   showOverviewRatings: boolean;
   showTrafficRating: boolean;
   showBandwidthRating: boolean;
@@ -85,18 +95,20 @@ export const DEFAULT_THEME_SETTINGS: ResolvedThemeSettings = {
   enableHomepageMultiPing: true,
   homepageMultiPingTaskIds: [...DEFAULT_HOMEPAGE_MULTI_PING_TASK_IDS],
   homepagePingLineOverrides: EMPTY_PING_LINE_OVERRIDES_BY_NODE,
-  fakePingForUnbound: false,
   showHomeOverview: true,
+  showAssetOverview: true,
   showGroupTabs: true,
   showRegionBar: true,
   showCardGroup: true,
   showCardPrice: true,
   homeGroupOrder: [],
+  homeDefaultGroup: "",
   enableHomeSort: true,
   homeSortField: "default",
   homeSortDirection: HOME_SORT_NATURAL_DIRECTION.default,
+  offlineNodesFirst: false,
   showCostSummary: true,
-  showCostSummaryFloatingButton: true,
+  renewalReminderDays: DEFAULT_RENEWAL_REMINDER_DAYS,
   showOverviewRatings: true,
   showTrafficRating: true,
   showBandwidthRating: true,
@@ -114,6 +126,18 @@ export const DEFAULT_THEME_SETTINGS: ResolvedThemeSettings = {
   costRateApiUrl: DEFAULT_COST_RATE_API_URL,
   surfaceOpacity: DEFAULT_SURFACE_OPACITY,
 };
+
+/** 首页默认分组：只收非空字符串，长度掐在合理范围内（分组名来自后端）。 */
+function normalizeHomeDefaultGroup(value: unknown): string {
+  return typeof value === "string" && value.trim() !== "" ? value.trim().slice(0, 120) : "";
+}
+
+/** 提醒天数：0~60 的整数，0 = 不提醒；写坏了回到默认。 */
+function normalizeRenewalReminderDays(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_RENEWAL_REMINDER_DAYS;
+  return Math.min(MAX_RENEWAL_REMINDER_DAYS, Math.max(0, Math.round(parsed)));
+}
 
 export function isAppearance(value: unknown): value is Appearance {
   return value === "system" || value === "light" || value === "dark";
@@ -228,18 +252,23 @@ export function normalizeThemeSettings(
     // 站长在卡片上点线路名换好、「保存到后端」写上来的逐节点换线（行号 → 线路 id）。线路 id 这里只校验
     // 是正整数（util 层不认线路表）；本机那份在 pingLineOverrideStore 里另按线路表筛。
     homepagePingLineOverrides: normalizePingLineOverridesByNode(settings?.homepagePingLineOverrides),
-    // 默认关闭(需手动开启):给访客展示的是模拟数据,必须由站长显式决定。
-    fakePingForUnbound: settings?.fakePingForUnbound === true,
     showHomeOverview: enabledUnlessFalse(settings?.showHomeOverview),
+    showAssetOverview: enabledUnlessFalse(settings?.showAssetOverview),
     showGroupTabs: enabledUnlessFalse(settings?.showGroupTabs),
     showRegionBar: enabledUnlessFalse(settings?.showRegionBar),
     showCardGroup: enabledUnlessFalse(settings?.showCardGroup),
     showCardPrice: enabledUnlessFalse(settings?.showCardPrice),
     homeGroupOrder: normalizeHomeGroupOrder(settings?.homeGroupOrder),
+    homeDefaultGroup: normalizeHomeDefaultGroup(settings?.homeDefaultGroup),
     enableHomeSort: enabledUnlessFalse(settings?.enableHomeSort),
     ...normalizeHomeSortDefault(settings?.homeSortField, settings?.homeSortDirection),
-    showCostSummary: enabledUnlessFalse(settings?.showCostSummary),
-    showCostSummaryFloatingButton: enabledUnlessFalse(settings?.showCostSummaryFloatingButton),
+    offlineNodesFirst: settings?.offlineNodesFirst === true,
+    // 老配置里资产入口是两个开关（卡内按钮 / 悬浮按钮），合并成一个：任一开着就还给入口，
+    // 放哪儿由首页自己判断（总览显示时放卡内，否则悬浮）。
+    showCostSummary:
+      enabledUnlessFalse(settings?.showCostSummary) ||
+      settings?.showCostSummaryFloatingButton === true,
+    renewalReminderDays: normalizeRenewalReminderDays(settings?.renewalReminderDays),
     showOverviewRatings: enabledUnlessFalse(settings?.showOverviewRatings),
     showTrafficRating: enabledUnlessFalse(settings?.showTrafficRating),
     showBandwidthRating: enabledUnlessFalse(settings?.showBandwidthRating),

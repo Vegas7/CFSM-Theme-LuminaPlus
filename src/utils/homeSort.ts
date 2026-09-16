@@ -53,11 +53,18 @@ export interface HomeSortContext {
   priceByUuid: Map<string, number | null>;
   /** 通过滞回门、当前算「活跃」的节点集合,仅「实时网速」维度用。 */
   speedActive: Set<string>;
+  /** 离线节点排最前面（设置项 offlineNodesFirst）；缺省置底。 */
+  offlineFirst?: boolean;
 }
 
 // 0=参与排序，1=无有效排序值，2=离线；后两段按 weight 排列。
-function segmentOf(node: HomeNodeSummary, field: HomeSortField, ctx: HomeSortContext): 0 | 1 | 2 {
-  if (node.online === false) return 2;
+// 离线置顶时给 -1：排在所有在线节点之前，段内仍按 weight。
+function segmentOf(
+  node: HomeNodeSummary,
+  field: HomeSortField,
+  ctx: HomeSortContext,
+): -1 | 0 | 1 | 2 {
+  if (node.online === false) return ctx.offlineFirst ? -1 : 2;
   if (field === "speed") return ctx.speedActive.has(node.uuid) ? 0 : 1;
   if (field === "price") return ctx.priceByUuid.get(node.uuid) != null ? 0 : 1;
   return 0;
@@ -118,10 +125,11 @@ export function sortHomeNodes(
     .map((entry) => entry.node);
 }
 
-/** 恢复冻结顺序，同时让新离线节点立即沉底。 */
+/** 恢复冻结顺序，同时让新离线节点立即沉底（或按设置置顶）。 */
 export function reconcileSpeedOrder(
   nodes: HomeNodeSummary[],
   frozenUuids: string[],
+  offlineFirst = false,
 ): HomeNodeSummary[] {
   const byUuid = new Map(nodes.map((node) => [node.uuid, node] as const));
   const online: HomeNodeSummary[] = [];
@@ -138,5 +146,5 @@ export function reconcileSpeedOrder(
   for (const node of nodes) {
     if (!used.has(node.uuid)) place(node);
   }
-  return [...online, ...offline];
+  return offlineFirst ? [...offline, ...online] : [...online, ...offline];
 }

@@ -200,8 +200,8 @@ export function Assets() {
     );
   }
 
-  // 两个入口都关闭 = 站长不想暴露资产信息,直连 URL 一并回首页。
-  if (!themeSettings.showCostSummary && !themeSettings.showCostSummaryFloatingButton) {
+  // 入口关掉 = 站长不想暴露资产信息，直连 URL 一并回首页。
+  if (!themeSettings.showCostSummary) {
     return <Navigate to="/" replace />;
   }
 
