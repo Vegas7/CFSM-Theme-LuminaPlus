@@ -1665,13 +1665,6 @@ export function ThemeManage() {
                     checked={draft.showCardPrice}
                     onPatch={patch}
                   />
-                  <ToggleRow
-                    field="enableHomeSort"
-                    title="启用排序切换"
-                    desc="首页显示排序控件，访客可临时切换排序方式（离线节点恒定置底）。"
-                    checked={draft.enableHomeSort}
-                    onPatch={patch}
-                  />
                 </div>
 
               </InstancePanel>
@@ -1682,12 +1675,21 @@ export function ThemeManage() {
                 title="排序与分组"
                 aside={<ArrowUpDown size={16} />}
               >
-                <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)]">
+                {/* 开关和它决定的默认顺序放一起：拆开之后「关掉开关这两组还能不能设」就看不出来了。 */}
+                <ToggleRow
+                  field="enableHomeSort"
+                  title="启用排序切换"
+                  desc="首页显示排序控件，访客可临时切换排序方式（离线节点恒定置底）。关掉后所有人都按下面定的顺序看。"
+                  checked={draft.enableHomeSort}
+                  onPatch={patch}
+                />
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)]">
                   <div>
                     <div className="setting-subhead">
                       <span className="setting-subhead-title">默认排序维度</span>
                       <span className="setting-hint">
-                        首次访问时的顺序。访客能不能自己改，看「首页显示项」里的「启用排序切换」；关掉时所有人都按这里定的顺序看。
+                        首次访问时的顺序；访客临时改过的只在他那个标签页里有效，关掉就回到这里定的。
                       </span>
                     </div>
                     <div className="instance-segmented is-scrollable">
