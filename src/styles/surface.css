@@ -762,6 +762,19 @@ body::after {
   box-shadow: 0 10px 24px -20px rgba(0, 0, 0, 0.55);
 }
 
+/* 顶栏和内容之间那道缝：顶栏本身不透明，缝里却会露出正滚过去的设置，看着就贴上来了。
+   这层比顶栏四周各大一圈（含圆角两侧），用页面底色糊住缝；站点设了背景图时按磨砂处理，
+   不至于糊出一条和背景对不上的实色带。改缝宽（inset 的第三个值）要跟着改 .theme-tab-rail 的 sticky top。 */
+.theme-topbar::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -24px -18px -20px;
+  background: color-mix(in srgb, var(--bg-0) 82%, transparent);
+  backdrop-filter: blur(18px);
+  pointer-events: none;
+}
+
 .theme-topbar-back {
   flex: none;
 }
@@ -975,8 +988,8 @@ body::after {
 
   .theme-tab-rail {
     position: sticky;
-    /* 顶栏（约 52px）之下，两者不重叠。 */
-    top: 68px;
+    /* 顶栏 56px + 它下面那层 20px 的遮挡，再留一点缝。 */
+    top: 80px;
     flex-direction: column;
     overflow: visible;
   }
