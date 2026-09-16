@@ -55,9 +55,14 @@
   --overview-online: color-mix(in srgb, var(--status-success) 72%, transparent);
   --overview-offline: color-mix(in srgb, var(--status-error) 55%, transparent);
   display: grid;
+  /* 列数由 data-cards 给（资产卡可以单独关掉），默认按四张排。 */
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.home-overview[data-cards="3"] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .overview-card {

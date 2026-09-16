@@ -1694,15 +1694,13 @@ export function ThemeManage() {
                   onPatch={patch}
                 />
 
-                <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)]">
-                  <div>
+                {/* 四个字段一套网格：标题在上、控件撑满格子。宽窄不一、说明乱飘是上一版「看着乱」的来源。 */}
+                <div className="setting-grid is-triple mt-4">
+                  <div className="is-wide">
                     <div className="setting-subhead">
                       <span className="setting-subhead-title">默认排序维度</span>
-                      <span className="setting-hint">
-                        首次访问时的顺序；访客临时改过的只在他那个标签页里有效，关掉就回到这里定的。
-                      </span>
                     </div>
-                    <div className="instance-segmented is-scrollable">
+                    <div className="instance-segmented is-prominent is-even">
                       {HOME_SORT_FIELDS.map((field) => (
                         <button
                           key={field}
@@ -1717,8 +1715,10 @@ export function ThemeManage() {
                     </div>
                   </div>
                   <div>
-                    <div className="mb-2 setting-subhead-title">默认方向</div>
-                    <div className="instance-segmented">
+                    <div className="setting-subhead">
+                      <span className="setting-subhead-title">默认方向</span>
+                    </div>
+                    <div className="instance-segmented is-prominent is-even">
                       <button
                         type="button"
                         data-active={draft.homeSortDirection === "asc" ? "true" : "false"}
@@ -1737,15 +1737,11 @@ export function ThemeManage() {
                       </button>
                     </div>
                   </div>
-                </div>
-
-                <div className="mt-4 grid gap-3 lg:grid-cols-2">
                   <div>
                     <div className="setting-subhead">
                       <span className="setting-subhead-title">离线节点</span>
-                      <span className="setting-hint">掉线的排哪边</span>
                     </div>
-                    <div className="instance-segmented" role="group" aria-label="离线节点位置">
+                    <div className="instance-segmented is-prominent is-even" role="group" aria-label="离线节点位置">
                       <button
                         type="button"
                         data-active={!draft.offlineNodesFirst ? "true" : "false"}
@@ -1767,15 +1763,14 @@ export function ThemeManage() {
                   <div className="min-w-0">
                     <div className="setting-subhead">
                       <span className="setting-subhead-title">默认分组</span>
-                      <span className="setting-hint">打开首页时先看哪一组</span>
                     </div>
                     <select
                       value={draft.homeDefaultGroup}
                       onChange={(event) => patch("homeDefaultGroup", event.target.value)}
                       aria-label="默认分组"
-                      className="surface-inset w-full px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
+                      className="surface-inset setting-control px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
                     >
-                      <option value="">全部</option>
+                      <option value="">全部（不指定）</option>
                       {/* 站点换过分组名时，存着的那个值仍列出来，免得选中项凭空消失。 */}
                       {draft.homeDefaultGroup !== "" &&
                         !availableGroups.includes(draft.homeDefaultGroup) && (
@@ -1791,6 +1786,10 @@ export function ThemeManage() {
                     </select>
                   </div>
                 </div>
+
+                <p className="mt-3 setting-hint">
+                  以上是访客首次打开首页时看到的顺序与分组；访客临时改过的排序只在他自己的标签页里有效。
+                </p>
 
                 <div className="mt-4">
                   <div className="setting-subhead">
@@ -2001,73 +2000,75 @@ export function ThemeManage() {
                 title="服务器花费"
                 aside={<CircleDollarSign size={16} />}
               >
-                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
-                  <div className="flex flex-col gap-3">
-                    <ToggleRow
-                      field="showCostSummary"
-                      title="显示资产统计入口"
-                      desc="进入资产统计页（/assets）的入口：顶部显示资产概览卡时放在卡片右上角，否则用悬浮按钮。关掉后直接访问资产页会跳回首页。"
-                      checked={draft.showCostSummary}
-                      onPatch={patch}
-                    />
-                    <label className="flex flex-col gap-2">
-                      <span className="setting-field-label">续费提醒</span>
-                      <span className="inline-flex items-center gap-2">
-                        <span className="setting-hint">还有</span>
-                        <input
-                          type="number"
-                          min={0}
-                          max={MAX_RENEWAL_REMINDER_DAYS}
-                          step={1}
-                          inputMode="numeric"
-                          value={draft.renewalReminderDays}
-                          onChange={(event) => {
-                            if (event.target.value.trim() === "") return;
-                            const next = Number(event.target.value);
-                            if (!Number.isFinite(next)) return;
-                            patch(
-                              "renewalReminderDays",
-                              Math.min(MAX_RENEWAL_REMINDER_DAYS, Math.max(0, Math.round(next))),
-                            );
-                          }}
-                          aria-label="续费提醒天数"
-                          className="surface-inset w-20 px-3 py-2 text-right text-[13px] tabular outline-none"
-                        />
-                        <span className="setting-hint">天到期时，在资产概览卡上提醒</span>
-                      </span>
-                      <span className="setting-hint">
-                        填 0 不提醒。0~{MAX_RENEWAL_REMINDER_DAYS} 天，月付填小一点、年付可以填大一点。
-                      </span>
-                    </label>
-                    <label className="flex flex-col gap-2">
-                      <span className="setting-field-label">
-                        实时汇率接口
-                      </span>
+                <div className="setting-grid">
+                  <ToggleRow
+                    field="showCostSummary"
+                    title="显示资产统计入口"
+                    desc="进入资产统计页（/assets）的入口：顶部显示资产概览卡时放在卡片右上角，否则用悬浮按钮。关掉后直接访问资产页会跳回首页。"
+                    checked={draft.showCostSummary}
+                    onPatch={patch}
+                  />
+                  <div>
+                    <div className="setting-subhead">
+                      <span className="setting-subhead-title">续费提醒</span>
+                      <span className="setting-hint">0 = 不提醒</span>
+                    </div>
+                    <div className="surface-inset flex items-center gap-2 px-4 py-3">
+                      <span className="setting-hint">还有</span>
                       <input
-                        value={draft.costRateApiUrl}
-                        onChange={(event) => patch("costRateApiUrl", event.target.value)}
-                        placeholder={DEFAULT_THEME_SETTINGS.costRateApiUrl}
-                        aria-invalid={draftCostRateApiUrlInvalid}
-                        className="surface-inset w-full px-3 py-2 text-[13px] outline-none"
+                        type="number"
+                        min={0}
+                        max={MAX_RENEWAL_REMINDER_DAYS}
+                        step={1}
+                        inputMode="numeric"
+                        value={draft.renewalReminderDays}
+                        onChange={(event) => {
+                          if (event.target.value.trim() === "") return;
+                          const next = Number(event.target.value);
+                          if (!Number.isFinite(next)) return;
+                          patch(
+                            "renewalReminderDays",
+                            Math.min(MAX_RENEWAL_REMINDER_DAYS, Math.max(0, Math.round(next))),
+                          );
+                        }}
+                        aria-label="续费提醒天数"
+                        className="surface-inset w-16 px-2 py-1.5 text-right text-[13px] tabular outline-none"
                       />
-                      {draftCostRateApiUrlInvalid && (
-                        <span className="text-[12px] text-[var(--status-offline)]">
-                          请输入 http(s) 链接，保存后将回退默认接口
-                        </span>
-                      )}
-                    </label>
+                      <span className="setting-hint">天到期时，在资产概览卡上提醒</span>
+                    </div>
                   </div>
-                  <label className="flex min-w-0 flex-col gap-2">
-                    <span className="setting-field-label">
-                      忽略计费节点
-                    </span>
+                  <div className="min-w-0">
+                    <div className="setting-subhead">
+                      <span className="setting-subhead-title">实时汇率接口</span>
+                      <span className="setting-hint">留空用默认接口</span>
+                    </div>
+                    <input
+                      value={draft.costRateApiUrl}
+                      onChange={(event) => patch("costRateApiUrl", event.target.value)}
+                      placeholder={DEFAULT_THEME_SETTINGS.costRateApiUrl}
+                      aria-invalid={draftCostRateApiUrlInvalid}
+                      aria-label="实时汇率接口"
+                      className="surface-inset setting-control px-3 py-2 text-[13px] outline-none"
+                    />
+                    {draftCostRateApiUrlInvalid && (
+                      <span className="mt-2 block text-[12px] text-[var(--status-offline)]">
+                        请输入 http(s) 链接，保存后将回退默认接口
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="setting-subhead">
+                      <span className="setting-subhead-title">忽略计费节点</span>
+                      <span className="setting-hint">不计入资产统计</span>
+                    </div>
                     <textarea
                       value={draft.costIgnoredText}
                       onChange={(event) => patch("costIgnoredText", event.target.value)}
                       placeholder="每行一个节点名称 / UUID，也可以用逗号分隔"
-                      className="surface-inset min-h-[112px] w-full resize-y px-3 py-2 text-[13px] outline-none"
+                      aria-label="忽略计费节点"
+                      className="surface-inset setting-control min-h-[88px] resize-y px-3 py-2 text-[13px] outline-none"
                     />
-                  </label>
+                  </div>
                 </div>
               </InstancePanel>
 

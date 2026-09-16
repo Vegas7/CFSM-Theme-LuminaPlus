@@ -476,10 +476,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 右下角悬浮，别放右上：资产概览卡单独关掉时总览那一排还在，右上角的球正好压住最后一张卡。 */
 .cost-summary-ball {
   position: fixed;
-  top: 76px;
   right: max(20px, env(safe-area-inset-right));
+  bottom: max(20px, env(safe-area-inset-bottom));
   z-index: 41;
   display: flex;
   width: 36px;
@@ -733,7 +734,6 @@
   }
 
   .cost-summary-ball {
-    top: auto;
     right: max(16px, env(safe-area-inset-right));
     bottom: max(18px, env(safe-area-inset-bottom));
   }

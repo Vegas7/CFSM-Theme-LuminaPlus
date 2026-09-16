@@ -832,6 +832,45 @@ body::after {
   font-weight: 560;
 }
 
+/* 一个分区里的字段统一两列铺开：标题在上、控件撑满格子，控件宽窄不一才是「乱」的来源。 */
+.setting-grid {
+  display: grid;
+  gap: 14px 16px;
+  align-items: start;
+}
+
+@media (min-width: 720px) {
+  .setting-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .setting-grid > .is-wide {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 分段控件在窄格子里平分宽度：is-prominent 的 140px 基准一到半格宽就换行，
+   每个选项占一整行、高度参差，看着就乱。 */
+.instance-segmented.is-prominent.is-even button,
+.instance-segmented.is-even button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+/* 选项多的字段（默认排序维度有 5 个）独占一行，剩下的三项并排，高度才齐。 */
+@media (min-width: 960px) {
+  .setting-grid.is-triple {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* 输入框 / 下拉和分段控件一样撑满格子。 */
+.setting-control {
+  width: 100%;
+}
+
 .setting-hint {
   color: var(--text-tertiary);
   font-size: 11px;

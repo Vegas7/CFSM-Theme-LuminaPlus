@@ -182,7 +182,12 @@ function HomeOverviewCards({
     ) : null;
 
   return (
-    <section className={`home-overview${dense ? " is-dense" : ""}`} aria-label="首页总览">
+    // 资产卡可以单独关掉，列数跟着实际张数走，不然右边空一格。
+    <section
+      className={`home-overview${dense ? " is-dense" : ""}`}
+      data-cards={showAssetCard ? 4 : 3}
+      aria-label="首页总览"
+    >
       <article className="overview-card" data-metric="online">
         <span className="overview-card-label">在线节点</span>
         <div className="overview-card-main">
