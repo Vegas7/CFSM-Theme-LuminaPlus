@@ -2000,21 +2000,22 @@ export function ThemeManage() {
                 title="服务器花费"
                 aside={<CircleDollarSign size={16} />}
               >
-                <div className="setting-grid">
-                  <ToggleRow
-                    field="showCostSummary"
-                    title="显示资产统计入口"
-                    desc="进入资产统计页（/assets）的入口：顶部显示资产概览卡时放在卡片右上角，否则用悬浮按钮。关掉后直接访问资产页会跳回首页。"
-                    checked={draft.showCostSummary}
-                    onPatch={patch}
-                  />
-                  <div>
+                {/* 和「排序与分组」同一套：开关整行在上，字段两列、标题在上，说明收到最下面一行。 */}
+                <ToggleRow
+                  field="showCostSummary"
+                  title="显示资产统计入口"
+                  desc="资产概览卡在就放卡内，不在就悬浮在右下角。关掉后访问资产页会跳回首页。"
+                  checked={draft.showCostSummary}
+                  onPatch={patch}
+                />
+
+                <div className="setting-grid mt-4">
+                  <div className="min-w-0">
                     <div className="setting-subhead">
                       <span className="setting-subhead-title">续费提醒</span>
-                      <span className="setting-hint">0 = 不提醒</span>
                     </div>
-                    <div className="surface-inset flex items-center gap-2 px-4 py-3">
-                      <span className="setting-hint">还有</span>
+                    <label className="surface-inset setting-control flex items-center gap-2 px-3">
+                      <span className="shrink-0 text-[13px] text-[var(--text-secondary)]">到期前</span>
                       <input
                         type="number"
                         min={0}
@@ -2032,15 +2033,14 @@ export function ThemeManage() {
                           );
                         }}
                         aria-label="续费提醒天数"
-                        className="surface-inset w-16 px-2 py-1.5 text-right text-[13px] tabular outline-none"
+                        className="min-w-0 flex-1 bg-transparent py-2 text-right text-[13px] tabular text-[var(--text-primary)] outline-none"
                       />
-                      <span className="setting-hint">天到期时，在资产概览卡上提醒</span>
-                    </div>
+                      <span className="shrink-0 text-[13px] text-[var(--text-secondary)]">天</span>
+                    </label>
                   </div>
                   <div className="min-w-0">
                     <div className="setting-subhead">
                       <span className="setting-subhead-title">实时汇率接口</span>
-                      <span className="setting-hint">留空用默认接口</span>
                     </div>
                     <input
                       value={draft.costRateApiUrl}
@@ -2056,20 +2056,23 @@ export function ThemeManage() {
                       </span>
                     )}
                   </div>
-                  <div className="min-w-0">
+                  <div className="is-wide min-w-0">
                     <div className="setting-subhead">
                       <span className="setting-subhead-title">忽略计费节点</span>
-                      <span className="setting-hint">不计入资产统计</span>
                     </div>
                     <textarea
                       value={draft.costIgnoredText}
                       onChange={(event) => patch("costIgnoredText", event.target.value)}
                       placeholder="每行一个节点名称 / UUID，也可以用逗号分隔"
                       aria-label="忽略计费节点"
-                      className="surface-inset setting-control min-h-[88px] resize-y px-3 py-2 text-[13px] outline-none"
+                      className="surface-inset setting-control block min-h-[88px] resize-y px-3 py-2 text-[13px] outline-none"
                     />
                   </div>
                 </div>
+
+                <p className="mt-3 setting-hint">
+                  续费提醒显示在资产概览卡上，填 0 就不提醒；汇率接口留空用默认；忽略的节点不计入资产统计。
+                </p>
               </InstancePanel>
 
               <InstancePanel
