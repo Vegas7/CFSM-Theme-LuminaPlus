@@ -942,6 +942,194 @@ body::after {
   color: var(--status-offline);
 }
 
+/* ------------------------------------------------------------------ *
+ * 主题设置页：分组导航 + 搜索直达
+ * 九个分区一条直线排下来时，桌面 5.4 屏、手机 6.7 屏，改一项要扫整页；
+ * 现在一次只渲染一组，导航在桌面端粘在左边、手机端是顶部一条横滑标签。
+ * ------------------------------------------------------------------ */
+.theme-manage-body {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+.theme-manage-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+.theme-tab-rail {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.theme-tab-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.theme-tab {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 620;
+  white-space: nowrap;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.theme-tab:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.theme-tab[data-active="true"] {
+  border-color: color-mix(in srgb, var(--accent-500) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent-500) 12%, var(--surface-a));
+  color: var(--text-primary);
+}
+
+.theme-tab-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.theme-tab[data-active="true"] .theme-tab-icon {
+  color: var(--accent-500);
+}
+
+/* 说明文字只在桌面端的竖排导航里出现，手机上横滑标签放不下。 */
+.theme-tab-hint {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .theme-manage-body {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
+  .theme-tab-rail {
+    position: sticky;
+    top: 16px;
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .theme-tab {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .theme-tab-hint {
+    display: block;
+    width: 100%;
+    padding-left: 22px;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.35;
+  }
+}
+
+.theme-setting-search {
+  position: relative;
+}
+
+.theme-setting-search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-a);
+}
+
+.theme-setting-search-field:focus-within {
+  border-color: color-mix(in srgb, var(--accent-500) 60%, var(--border));
+}
+
+.theme-setting-search-results {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 24px 48px -28px rgba(0, 0, 0, 0.6);
+}
+
+.theme-setting-search-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  color: var(--text-primary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.theme-setting-search-item[data-active="true"] {
+  background: var(--hover-bg);
+}
+
+.theme-setting-search-item-tab {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.theme-setting-search-empty {
+  padding: 10px;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+}
+
+/* 搜索跳过来的那一项闪一下：落在一屏设置中间，不标出来还是要找。 */
+.is-setting-hit {
+  animation: setting-hit 1.8s ease-out;
+}
+
+@keyframes setting-hit {
+  0%,
+  55% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-500) 70%, transparent);
+  }
+
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-setting-hit {
+    animation: none;
+    outline: 2px solid color-mix(in srgb, var(--accent-500) 70%, transparent);
+    outline-offset: 2px;
+  }
+}
+
 .theme-manage-button.is-compact {
   min-height: 32px;
   padding: 0 12px;
@@ -1056,7 +1244,7 @@ body::after {
   gap: 5px;
 }
 
-/* 编号分区小标(仅主题管理传入 kicker 时出现):两位序号用品牌色 + 分区名。 */
+/* 分区小标(仅主题管理传入 kicker 时出现)。 */
 .instance-panel-kicker {
   display: inline-flex;
   align-items: center;
@@ -1066,14 +1254,6 @@ body::after {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.16em;
-}
-
-.instance-panel-kicker-num {
-  color: var(--accent-500);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  font-variant-numeric: tabular-nums;
 }
 
 /* 带 kicker 的面板(主题管理各分区)标题区加一道发丝下线,读作报告的分节。 */

@@ -1,8 +1,10 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Activity,
   ArrowLeft,
+  ArrowUpDown,
   ChevronDown,
   ChevronUp,
   CircleDollarSign,
@@ -24,6 +26,7 @@ import {
   Rows3,
   Save,
   Search,
+  Sparkles,
   Sun,
   SunMoon,
   Wallpaper,
@@ -376,7 +379,11 @@ const ToggleRow = memo(function ToggleRow({
   onPatch: (key: BooleanDraftKey, value: boolean) => void;
 }) {
   return (
-    <label className="surface-inset flex items-center justify-between gap-3 px-4 py-3">
+    // id 让搜索直达能滚到这一行（见 SETTING_INDEX），字段名天然唯一。
+    <label
+      id={`set-${field}`}
+      className="surface-inset flex items-center justify-between gap-3 px-4 py-3"
+    >
       <span className="min-w-0">
         <span className="block text-[13px] font-medium text-[var(--text-primary)]">{title}</span>
         <span className="mt-1 block text-[11px] text-[var(--text-tertiary)]">{desc}</span>
@@ -694,6 +701,181 @@ const PremiumList = memo(function PremiumList({
   );
 });
 
+/* ------------------------------------------------------------------ *
+ * 设置分组与搜索直达
+ * ------------------------------------------------------------------ */
+
+type ThemeTabId = "appearance" | "home" | "card" | "cost" | "ping";
+
+/**
+ * 设置按分组分页，一次只渲染一组。
+ *
+ * 原来九个分区一条直线排下来：桌面 4100px（5.4 屏）、手机 6000px（6.7 屏），节点越多越长，
+ * 改一项设置要把整页扫一遍。分组后一组只剩 1~2 屏，配合上面的搜索直达，找设置从「滚」变成「点」。
+ * 加新设置时一并想好放哪一组，并在 SETTING_INDEX 里登记，否则搜不到。
+ */
+const THEME_TABS: ReadonlyArray<{
+  id: ThemeTabId;
+  label: string;
+  hint: string;
+  icon: typeof LayoutTemplate;
+}> = [
+  { id: "appearance", label: "外观", hint: "外观、卡片尺寸、透明度", icon: LayoutTemplate },
+  { id: "home", label: "首页", hint: "总览、排序、隐藏节点", icon: ListFilter },
+  { id: "card", label: "卡片", hint: "卡片上显示哪些信息", icon: Rows3 },
+  { id: "cost", label: "花费", hint: "资产统计与收购溢价", icon: CircleDollarSign },
+  { id: "ping", label: "延迟", hint: "线路与逐节点指定", icon: Activity },
+];
+
+const THEME_TAB_LABELS: Record<ThemeTabId, string> = {
+  appearance: "外观",
+  home: "首页",
+  card: "卡片",
+  cost: "花费",
+  ping: "延迟",
+};
+
+const DEFAULT_THEME_TAB: ThemeTabId = "appearance";
+
+function isThemeTabId(value: string | null): value is ThemeTabId {
+  return value != null && THEME_TABS.some((tab) => tab.id === value);
+}
+
+interface SettingIndexEntry {
+  /** 锚点：面板的 id，或 ToggleRow 自带的 `set-<字段名>`。 */
+  id: string;
+  tab: ThemeTabId;
+  label: string;
+  /** 一起参与匹配的别名：写站长会想到的词，不是界面上的原话。 */
+  keywords: string;
+}
+
+/** 搜索框的词表。只登记「能一句话说清、值得单独找」的设置，面板级的锚点就够用了。 */
+const SETTING_INDEX: readonly SettingIndexEntry[] = [
+  { id: "set-appearance", tab: "appearance", label: "默认外观", keywords: "深色 浅色 暗色 跟随系统 主题" },
+  { id: "set-view", tab: "appearance", label: "默认卡片视图", keywords: "大卡 小卡 迷你 列表 桌面 移动 手机" },
+  { id: "set-opacity", tab: "appearance", label: "卡片透明度", keywords: "不透明度 背景图 遮罩 毛玻璃" },
+  { id: "set-showHomeOverview", tab: "home", label: "显示顶部总览", keywords: "在线数 流量 速率 概览" },
+  { id: "set-showGroupTabs", tab: "home", label: "显示分组筛选", keywords: "分组 tab 标签" },
+  { id: "set-showRegionBar", tab: "home", label: "显示地区筛选", keywords: "国旗 地区 region" },
+  { id: "set-showCardGroup", tab: "home", label: "卡片显示分组", keywords: "分组名" },
+  { id: "set-showCardPrice", tab: "home", label: "卡片显示价格", keywords: "价格 续费" },
+  { id: "set-enableHomeSort", tab: "home", label: "启用排序切换", keywords: "排序控件 访客" },
+  { id: "set-home-sort", tab: "home", label: "默认排序维度与方向", keywords: "排序 升序 降序 名称 网速 流量 价格" },
+  { id: "set-home-sort", tab: "home", label: "分组排序", keywords: "分组顺序 tab 顺序 上移 下移" },
+  { id: "set-home-ratings", tab: "home", label: "总览评级", keywords: "评级 名称 段位 流量 带宽 资产" },
+  { id: "set-hidden", tab: "home", label: "隐藏节点", keywords: "隐藏 移除 不显示 统计" },
+  { id: "set-showConnections", tab: "card", label: "显示连接数（TCP/UDP）", keywords: "连接数 tcp udp" },
+  { id: "set-compactShowTrafficTotal", tab: "card", label: "小卡片显示累计流量", keywords: "累计流量 出站 入站" },
+  { id: "set-compactShowBilling", tab: "card", label: "小卡片显示费用到期", keywords: "到期 续费 价格 剩余天数" },
+  { id: "set-compactShowUptime", tab: "card", label: "小卡片显示在线时间", keywords: "在线时长 uptime" },
+  { id: "set-showCostSummary", tab: "cost", label: "显示资产页入口按钮", keywords: "资产 入口 assets" },
+  { id: "set-showCostSummaryFloatingButton", tab: "cost", label: "显示资产悬浮按钮", keywords: "悬浮 资产 入口" },
+  { id: "set-cost", tab: "cost", label: "实时汇率接口", keywords: "汇率 接口 地址 frankfurter 折算" },
+  { id: "set-cost", tab: "cost", label: "忽略计费节点", keywords: "忽略 免费 不计费 资产" },
+  { id: "set-premium", tab: "cost", label: "收购溢价", keywords: "收购价 溢价 接手 转让" },
+  { id: "set-ping", tab: "ping", label: "单线路 / 多线路显示", keywords: "多线路 单线路 三网 卡片 延迟" },
+  { id: "set-ping", tab: "ping", label: "默认线路", keywords: "默认 线路 电信 联通 移动 兜底" },
+  { id: "set-ping-bindings", tab: "ping", label: "逐节点指定线路", keywords: "绑定 指定 单台 节点 线路" },
+  { id: "set-fakePingForUnbound", tab: "ping", label: "未绑定节点显示模拟延迟", keywords: "模拟 假数据 没有探测" },
+];
+
+const EMPTY_SETTING_RESULTS: readonly SettingIndexEntry[] = [];
+
+/**
+ * 搜索直达：输入设置名或别名，回车 / 点结果跳到对应分组并高亮那一行。
+ * 不做「过滤整页」：设置项的样子差别太大（开关、滑块、表格），逐项过滤会把版面拆碎。
+ */
+function SettingSearch({ onJump }: { onJump: (entry: SettingIndexEntry) => void }) {
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const results = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    if (!keyword) return EMPTY_SETTING_RESULTS;
+    return SETTING_INDEX.filter(
+      (entry) =>
+        entry.label.toLowerCase().includes(keyword) ||
+        entry.keywords.toLowerCase().includes(keyword),
+    ).slice(0, 8);
+  }, [query]);
+
+  const pick = (entry: SettingIndexEntry | undefined) => {
+    if (!entry) return;
+    onJump(entry);
+    setQuery("");
+    setActiveIndex(0);
+  };
+
+  return (
+    <div className="theme-setting-search">
+      <label className="theme-setting-search-field">
+        <Search size={14} className="shrink-0 text-[var(--text-tertiary)]" />
+        <input
+          value={query}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setActiveIndex(0);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setActiveIndex((index) => Math.min(index + 1, results.length - 1));
+            } else if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setActiveIndex((index) => Math.max(index - 1, 0));
+            } else if (event.key === "Enter") {
+              event.preventDefault();
+              pick(results[activeIndex]);
+            } else if (event.key === "Escape") {
+              setQuery("");
+            }
+          }}
+          placeholder="搜索设置：透明度、连接数、隐藏节点…"
+          aria-label="搜索设置"
+          className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-tertiary)]"
+        />
+        {query !== "" && (
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            aria-label="清空搜索"
+            className="shrink-0 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
+          >
+            <X size={13} />
+          </button>
+        )}
+      </label>
+      {query.trim() !== "" && (
+        <div className="theme-setting-search-results" role="listbox" aria-label="搜索结果">
+          {results.length === 0 ? (
+            <div className="theme-setting-search-empty">没有匹配的设置</div>
+          ) : (
+            results.map((entry, index) => (
+              <button
+                key={`${entry.id}-${entry.label}`}
+                type="button"
+                role="option"
+                aria-selected={index === activeIndex}
+                data-active={index === activeIndex ? "true" : "false"}
+                // onMouseDown：输入框失焦前就要拿到这次点击，用 onClick 会先关掉结果列表。
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  pick(entry);
+                }}
+                onMouseEnter={() => setActiveIndex(index)}
+                className="theme-setting-search-item"
+              >
+                <span className="truncate">{entry.label}</span>
+                <span className="theme-setting-search-item-tab">{THEME_TAB_LABELS[entry.tab]}</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 登录站长在设置页停手多久自动保存（之后还有自动同步自己的防抖，见 SITE_THEME_SYNC_DEBOUNCE_MS）。 */
 const THEME_AUTO_SAVE_DEBOUNCE_MS = 600;
 
@@ -749,6 +931,14 @@ export function ThemeManage() {
     draftFromSettings(DEFAULT_THEME_SETTINGS),
   );
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
+  // 分组页签记在地址里：刷新、后退、把链接发给别人都还在同一组。
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const activeTab: ThemeTabId = isThemeTabId(tabParam) ? tabParam : DEFAULT_THEME_TAB;
+  // 两块逐节点的长表格默认收起（节点多时它们比其余所有设置加起来还长）。
+  const [showNodeBindings, setShowNodeBindings] = useState(false);
+  const [showPremiumList, setShowPremiumList] = useState(false);
+  const [pendingAnchor, setPendingAnchor] = useState<string | null>(null);
   // 多线路模式下「单线路设置」默认收起（大/小卡片用不到它）。但不能删：迷你卡片与列表永远
   // 走单线路，这里是它们唯一的入口，所以留一个展开按钮。单线路模式下这块恒展开。
   const [showSingleLineSettings, setShowSingleLineSettings] = useState(false);
@@ -785,6 +975,78 @@ export function ThemeManage() {
     },
     [],
   );
+  const switchTab = useCallback(
+    (next: ThemeTabId) => {
+      // replace：换分组不该在浏览器历史里堆一串，按返回要回首页。view 等其它参数原样保留。
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          params.set("tab", next);
+          return params;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
+
+  const openTab = useCallback(
+    (next: ThemeTabId) => {
+      switchTab(next);
+      window.scrollTo({ top: 0 });
+    },
+    [switchTab],
+  );
+
+  /** 搜索结果点过来：切到那一组，滚到并高亮那一项；目标在默认收起的块里就先展开。 */
+  const jumpToSetting = useCallback(
+    (entry: SettingIndexEntry) => {
+      if (entry.id === "set-ping-bindings") setShowNodeBindings(true);
+      if (entry.id === "set-premium") setShowPremiumList(true);
+      switchTab(entry.tab);
+      setPendingAnchor(entry.id);
+    },
+    [switchTab],
+  );
+
+  /**
+   * 滚到搜索选中的那一项并高亮。
+   *
+   * 切分组走的是路由导航，React Router 把它放进 transition 里推迟渲染 —— 这个 effect 跑的时候
+   * 目标多半还没挂上来，所以找不到就过一会再找（最多 20 次、约 320ms）。用定时器不用
+   * requestAnimationFrame：页面在后台时 rAF 不跑，跳转会卡在那儿不动。
+   */
+  useEffect(() => {
+    if (!pendingAnchor) return;
+    let target: HTMLElement | null = null;
+    let attempts = 0;
+    let retry = 0;
+    let timer = 0;
+    const find = () => {
+      target = document.getElementById(pendingAnchor);
+      if (!target) {
+        if (attempts++ < 20) {
+          retry = window.setTimeout(find, 16);
+          return;
+        }
+        setPendingAnchor(null);
+        return;
+      }
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+      target.classList.add("is-setting-hit");
+      timer = window.setTimeout(() => {
+        target?.classList.remove("is-setting-hit");
+        setPendingAnchor(null);
+      }, 1800);
+    };
+    find();
+    return () => {
+      window.clearTimeout(retry);
+      window.clearTimeout(timer);
+      target?.classList.remove("is-setting-hit");
+    };
+  }, [pendingAnchor]);
+
   const toggleTaskExpanded = useCallback((taskId: number) => {
     setExpandedTaskId((current) => (current === taskId ? null : taskId));
     setNodeSearch("");
@@ -1419,767 +1681,883 @@ export function ThemeManage() {
         </div>
       )}
 
-      <InstancePanel
-        kicker={<><span className="instance-panel-kicker-num">01</span>外观</>}
-        title="默认外观"
-        description="为首次访问或尚未手动切换外观的用户设置默认显示模式；后续仍可在首页右上角按需切换。"
-        aside={<LayoutTemplate size={16} />}
-      >
-        <div className="instance-segmented is-scrollable">
-          {APPEARANCE_OPTIONS.map(({ value, label, icon: Icon }) => (
+      <SettingSearch onJump={jumpToSetting} />
+
+      <div className="theme-manage-body">
+        <nav className="theme-tab-rail" aria-label="设置分组">
+          {THEME_TABS.map(({ id, label, hint, icon: Icon }) => (
             <button
-              key={value}
+              key={id}
               type="button"
-              data-active={draft.defaultAppearance === value ? "true" : "false"}
-              aria-pressed={draft.defaultAppearance === value}
-              onClick={() => patch("defaultAppearance", value)}
-              className="inline-flex items-center justify-center gap-2"
+              onClick={() => openTab(id)}
+              data-active={activeTab === id ? "true" : "false"}
+              aria-current={activeTab === id ? "page" : undefined}
+              className="theme-tab"
             >
-              <Icon size={14} />
-              <span>{label}</span>
+              <Icon size={14} className="theme-tab-icon" />
+              <span className="theme-tab-label">{label}</span>
+              <span className="theme-tab-hint">{hint}</span>
             </button>
           ))}
-        </div>
-      </InstancePanel>
+        </nav>
 
-      <InstancePanel
-        kicker={<><span className="instance-panel-kicker-num">02</span>视图</>}
-        title="默认卡片视图"
-        description="分别设置桌面端与移动端的默认卡片尺寸；首页右上角按钮只临时切换当前设备的显示。"
-        aside={<LayoutGrid size={16} />}
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="surface-inset flex flex-col gap-3 px-4 py-4">
-            <div>
-              <div className="text-[13px] font-semibold text-[var(--text-primary)]">
-                桌面端默认
-              </div>
-              <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
-                适用于宽度大于 720px 的浏览器窗口。
-              </div>
-            </div>
-            <div className="instance-segmented is-scrollable">
-              {NODE_VIEW_MODE_OPTIONS.map(({ value, label, icon: Icon }) => (
-                <button
-                  key={value}
-                  type="button"
-                  data-active={draft.desktopNodeViewMode === value ? "true" : "false"}
-                  aria-pressed={draft.desktopNodeViewMode === value}
-                  onClick={() => patch("desktopNodeViewMode", value)}
-                  className="inline-flex items-center justify-center gap-2"
-                >
-                  <Icon size={14} />
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="surface-inset flex flex-col gap-3 px-4 py-4">
-            <div>
-              <div className="text-[13px] font-semibold text-[var(--text-primary)]">
-                移动端默认
-              </div>
-              <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
-                适用于宽度小于等于 720px 的手机或窄屏窗口。
-              </div>
-            </div>
-            <div className="instance-segmented is-scrollable">
-              {MOBILE_VIEW_MODE_OPTIONS.map(({ value, label, icon: Icon }) => (
-                <button
-                  key={value}
-                  type="button"
-                  data-active={draft.mobileNodeViewMode === value ? "true" : "false"}
-                  aria-pressed={draft.mobileNodeViewMode === value}
-                  onClick={() => patch("mobileNodeViewMode", value)}
-                  className="inline-flex items-center justify-center gap-2"
-                >
-                  <Icon size={14} />
-                  <span>{label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </InstancePanel>
-
-      <InstancePanel
-        kicker={<><span className="instance-panel-kicker-num">03</span>背景</>}
-        title="卡片透明度"
-        description="背景图由后台「外观设置」统一下发到所有主题，这里只调节本主题卡片的不透明度；调低后会自动叠加可读性遮罩。"
-        aside={<Wallpaper size={16} />}
-      >
-        <div className="flex flex-col gap-4">
-          <div className="surface-inset flex flex-col gap-3 px-4 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-[13px] font-semibold text-[var(--text-primary)]">
-                卡片不透明度
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={1}
-                  inputMode="numeric"
-                  value={draft.surfaceOpacity}
-                  onChange={(event) => {
-                    // Number("") === 0,没有这行的话清空输入框(想重新输入)会把值跳成 0。
-                    if (event.target.value.trim() === "") return;
-                    const next = Number(event.target.value);
-                    if (!Number.isFinite(next)) return;
-                    patch("surfaceOpacity", Math.min(100, Math.max(0, Math.round(next))));
-                  }}
-                  aria-label="卡片不透明度百分比"
-                  className="surface-inset w-20 px-3 py-2 text-right text-[13px] tabular outline-none"
-                />
-                <span className="text-[13px] font-medium text-[var(--text-tertiary)]">%</span>
-              </span>
-            </div>
-            <span className="text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-              输入 0–100 的整数。100 = 完全不透明，数值越低卡片越通透、越能透出站点背景图。
-              低于 95 时会自动叠加一层可读性遮罩，保证文字清晰。
-            </span>
-          </div>
-          <div className="surface-inset px-4 py-3 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-            要更换背景图、站点标题或站点图标，请到 <code>/admin#admin</code> 的外观设置中修改，
-            它们对所有主题统一生效。
-          </div>
-        </div>
-      </InstancePanel>
-
-      <InstancePanel
-        kicker={<><span className="instance-panel-kicker-num">04</span>首页</>}
-        title="首页巡检"
-        description="控制首页顶部总览、分组筛选和节点排序方式；适合节点较多时快速查看状态。"
-        aside={<ListFilter size={16} />}
-      >
-        <div className="grid gap-3 md:grid-cols-3">
-          <ToggleRow
-            field="showHomeOverview"
-            title="显示顶部总览"
-            desc="展示时间、在线数、地区、流量和速率。"
-            checked={draft.showHomeOverview}
-            onPatch={patch}
-          />
-          <ToggleRow
-            field="showGroupTabs"
-            title="显示分组筛选"
-            desc="根据后端节点分组生成首页 Tab。"
-            checked={draft.showGroupTabs}
-            onPatch={patch}
-          />
-          <ToggleRow
-            field="showRegionBar"
-            title="显示地区筛选"
-            desc="按节点地区生成国旗筛选栏，点击某地区只看该地区节点。"
-            checked={draft.showRegionBar}
-            onPatch={patch}
-          />
-          <ToggleRow
-            field="showCardGroup"
-            title="卡片显示分组"
-            desc="关闭后卡片内不再显示节点分组名（不影响分组筛选栏与备注）。"
-            checked={draft.showCardGroup}
-            onPatch={patch}
-          />
-          <ToggleRow
-            field="showCardPrice"
-            title="卡片显示价格"
-            desc="关闭后大卡片内不再显示价格。"
-            checked={draft.showCardPrice}
-            onPatch={patch}
-          />
-          <ToggleRow
-            field="enableHomeSort"
-            title="启用排序切换"
-            desc="首页显示排序控件，访客可临时切换排序方式（离线节点恒定置底）。"
-            checked={draft.enableHomeSort}
-            onPatch={patch}
-          />
-        </div>
-
-        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)]">
-          <div>
-            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <span className="text-[13px] font-medium text-[var(--text-primary)]">默认排序维度</span>
-              <span className="text-[11px] text-[var(--text-tertiary)]">
-                首次访问时的初始排序；访客可临时切换。
-              </span>
-            </div>
-            <div className="instance-segmented is-scrollable">
-              {HOME_SORT_FIELDS.map((field) => (
-                <button
-                  key={field}
-                  type="button"
-                  data-active={draft.homeSortField === field ? "true" : "false"}
-                  aria-pressed={draft.homeSortField === field}
-                  disabled={!draft.enableHomeSort}
-                  onClick={() => patch("homeSortField", field)}
-                >
-                  {HOME_SORT_FIELD_LABELS[field]}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="mb-2 text-[13px] font-medium text-[var(--text-primary)]">默认方向</div>
-            <div className="instance-segmented">
-              <button
-                type="button"
-                data-active={draft.homeSortDirection === "asc" ? "true" : "false"}
-                aria-pressed={draft.homeSortDirection === "asc"}
-                disabled={!draft.enableHomeSort}
-                onClick={() => patch("homeSortDirection", "asc")}
+        <div className="theme-manage-sections">
+          {activeTab === "appearance" && (
+            <>
+              <InstancePanel
+                id="set-appearance"
+                kicker="外观"
+                title="默认外观"
+                description="为首次访问或尚未手动切换外观的用户设置默认显示模式；后续仍可在首页右上角按需切换。"
+                aside={<LayoutTemplate size={16} />}
               >
-                升序
-              </button>
-              <button
-                type="button"
-                data-active={draft.homeSortDirection === "desc" ? "true" : "false"}
-                aria-pressed={draft.homeSortDirection === "desc"}
-                disabled={!draft.enableHomeSort}
-                onClick={() => patch("homeSortDirection", "desc")}
-              >
-                降序
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="text-[13px] font-medium text-[var(--text-primary)]">分组排序</span>
-            <span className="text-[11px] text-[var(--text-tertiary)]">
-              调整首页分组 Tab 的显示顺序；未列出的分组按后端顺序排在后面。
-            </span>
-          </div>
-          {orderedDraftGroups.length === 0 ? (
-            <p className="surface-inset mt-2 px-4 py-3 text-[12px] text-[var(--text-tertiary)]">
-              {clientsLoading ? "正在加载分组…" : "暂无分组（节点未设置分组时无需排序）"}
-            </p>
-          ) : (
-            <ul className="mt-2 flex flex-col gap-2">
-              {orderedDraftGroups.map((group, index) => (
-                <li
-                  key={group}
-                  className="surface-inset flex items-center justify-between gap-3 px-4 py-2.5"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="tabular text-[12px] text-[var(--text-tertiary)]">
-                      {index + 1}
-                    </span>
-                    <span
-                      className="truncate text-[13px] text-[var(--text-primary)]"
-                      title={group}
-                    >
-                      {group}
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-1">
+                <div className="instance-segmented is-scrollable">
+                  {APPEARANCE_OPTIONS.map(({ value, label, icon: Icon }) => (
                     <button
+                      key={value}
                       type="button"
-                      disabled={index === 0}
-                      onClick={() => moveGroup(index, -1)}
-                      className="theme-manage-button is-compact"
-                      aria-label={`上移 ${group}`}
+                      data-active={draft.defaultAppearance === value ? "true" : "false"}
+                      aria-pressed={draft.defaultAppearance === value}
+                      onClick={() => patch("defaultAppearance", value)}
+                      className="inline-flex items-center justify-center gap-2"
                     >
-                      <ChevronUp size={14} />
+                      <Icon size={14} />
+                      <span>{label}</span>
                     </button>
-                    <button
-                      type="button"
-                      disabled={index === orderedDraftGroups.length - 1}
-                      onClick={() => moveGroup(index, 1)}
-                      className="theme-manage-button is-compact"
-                      aria-label={`下移 ${group}`}
-                    >
-                      <ChevronDown size={14} />
-                    </button>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="mt-4 surface-inset px-4 py-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <span className="min-w-0">
-              <span className="block text-[13px] font-semibold text-[var(--text-primary)]">
-                总览评级
-              </span>
-              <span className="mt-1 block text-[11px] text-[var(--text-tertiary)]">
-                在累计流量、实时带宽、资产概览右下角显示文字评级；名称用英文逗号分隔，只取前四个。
-              </span>
-            </span>
-            <label className="inline-flex shrink-0 items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
-              <span>启用</span>
-              <input
-                type="checkbox"
-                checked={draft.showOverviewRatings}
-                onChange={(event) => patch("showOverviewRatings", event.target.checked)}
-                className="h-4 w-4 accent-[var(--accent-500)]"
-              />
-            </label>
-          </div>
-
-          <div className="mt-3 grid gap-3 md:grid-cols-3">
-            {OVERVIEW_RATING_LABEL_FIELDS.map((field) => {
-              const defaultLabel = getDefaultOverviewRatingLabelText(field.key);
-              const ratingEnabled = draft.showOverviewRatings && draft[field.toggleKey];
-              return (
-                <div key={field.key} className="flex min-w-0 flex-col gap-2">
-                  <label className="flex items-center justify-between gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
-                    <span>{field.title}</span>
-                    <input
-                      type="checkbox"
-                      checked={draft[field.toggleKey]}
-                      disabled={!draft.showOverviewRatings}
-                      onChange={(event) => patch(field.toggleKey, event.target.checked)}
-                      className="h-4 w-4 shrink-0 accent-[var(--accent-500)]"
-                    />
-                  </label>
-                  <input
-                    value={draft.ratingLabels[field.key]}
-                    disabled={!ratingEnabled}
-                    onChange={(event) => setRatingLabelDraft(field.key, event.target.value)}
-                    placeholder={defaultLabel}
-                    aria-label={`${field.title}评级名称`}
-                    className="surface-inset w-full px-3 py-2 text-[13px] outline-none disabled:opacity-60"
-                  />
-                  <span className="text-[11px] text-[var(--text-tertiary)]">
-                    例如: {defaultLabel}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </InstancePanel>
-
-      <InstancePanel
-        kicker={<><span className="instance-panel-kicker-num">05</span>隐藏</>}
-        title="隐藏节点"
-        description="在此填写的节点会从首页彻底移除：不显示卡片，也不计入在线数、累计流量、实时带宽与资产等所有统计。对所有访客生效，清空即可恢复。"
-        aside={<EyeOff size={16} />}
-      >
-        <label className="flex min-w-0 flex-col gap-2">
-          <span className="text-[12px] font-medium text-[var(--text-secondary)]">
-            隐藏列表
-          </span>
-          <textarea
-            value={draft.hiddenNodesText}
-            onChange={(event) => patch("hiddenNodesText", event.target.value)}
-            placeholder="每行一个节点名称 / UUID，也可以用逗号分隔"
-            className="surface-inset min-h-[112px] w-full resize-y px-3 py-2 text-[13px] outline-none"
-          />
-          <span className="text-[11px] text-[var(--text-tertiary)]">
-            已隐藏 {draftHiddenNodes.length} 个节点。按名称或 UUID 匹配，大小写不敏感。
-          </span>
-        </label>
-      </InstancePanel>
-
-      <InstancePanel
-        kicker={<><span className="instance-panel-kicker-num">06</span>卡片</>}
-        title="卡片显示项"
-        description="分别管理跨卡片视图的功能入口，以及小卡片专属的信息密度。"
-        aside={<Rows3 size={16} />}
-      >
-        <div>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="text-[13px] font-medium text-[var(--text-primary)]">跨视图设置</span>
-            <span className="text-[11px] text-[var(--text-tertiary)]">
-              适用于多个卡片尺寸，具体范围以每项说明为准。
-            </span>
-          </div>
-          <div className="mt-2 grid gap-3 md:grid-cols-2">
-            <ToggleRow
-              field="showConnections"
-              title="显示连接数（TCP/UDP）"
-              desc="在大卡片与小卡片展示实时 TCP / UDP 连接数；需被控端上报，未上报显示 0。默认关闭。"
-              checked={draft.showConnections}
-              onPatch={patch}
-            />
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="text-[13px] font-medium text-[var(--text-primary)]">小卡片专属</span>
-            <span className="text-[11px] text-[var(--text-tertiary)]">
-              控制小卡片中间信息块的密度；实时速率始终显示。
-            </span>
-          </div>
-          <div className="mt-2 grid gap-3 md:grid-cols-2">
-            <ToggleRow
-              field="compactShowTrafficTotal"
-              title="显示累计流量"
-              desc="展示出站与入站累计流量。"
-              checked={draft.compactShowTrafficTotal}
-              onPatch={patch}
-            />
-            <ToggleRow
-              field="compactShowBilling"
-              title="显示费用到期"
-              desc="展示续费价格与剩余天数。"
-              checked={draft.compactShowBilling}
-              onPatch={patch}
-            />
-            <ToggleRow
-              field="compactShowUptime"
-              title="显示在线时间"
-              desc="在小卡片流量栏右侧展示在线时长。默认开启。"
-              checked={draft.compactShowUptime}
-              onPatch={patch}
-            />
-          </div>
-        </div>
-      </InstancePanel>
-
-      <InstancePanel
-        kicker={<><span className="instance-panel-kicker-num">07</span>花费</>}
-        title="服务器花费"
-        description="资产统计页（/assets）使用实时汇率计算年化总支出、月均支出与剩余价值；忽略列表中的节点不会计入费用。两个入口开关都关闭时，直接访问资产页也会跳回首页。"
-        aside={<CircleDollarSign size={16} />}
-      >
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
-          <div className="flex flex-col gap-3">
-            <ToggleRow
-              field="showCostSummary"
-              title="显示资产页入口按钮"
-              desc="在首页资产概览卡右上角显示进入资产统计页的按钮。"
-              checked={draft.showCostSummary}
-              onPatch={patch}
-            />
-            <ToggleRow
-              field="showCostSummaryFloatingButton"
-              title="显示资产悬浮按钮"
-              desc="卡内入口不可用时（总览隐藏或其开关关闭），以悬浮按钮进入资产统计页。"
-              checked={draft.showCostSummaryFloatingButton}
-              onPatch={patch}
-            />
-            <label className="flex flex-col gap-2">
-              <span className="text-[12px] font-medium text-[var(--text-secondary)]">
-                实时汇率接口
-              </span>
-              <input
-                value={draft.costRateApiUrl}
-                onChange={(event) => patch("costRateApiUrl", event.target.value)}
-                placeholder={DEFAULT_THEME_SETTINGS.costRateApiUrl}
-                aria-invalid={draftCostRateApiUrlInvalid}
-                className="surface-inset w-full px-3 py-2 text-[13px] outline-none"
-              />
-              {draftCostRateApiUrlInvalid && (
-                <span className="text-[12px] text-[var(--status-offline)]">
-                  请输入 http(s) 链接，保存后将回退默认接口
-                </span>
-              )}
-            </label>
-          </div>
-          <label className="flex min-w-0 flex-col gap-2">
-            <span className="text-[12px] font-medium text-[var(--text-secondary)]">
-              忽略计费节点
-            </span>
-            <textarea
-              value={draft.costIgnoredText}
-              onChange={(event) => patch("costIgnoredText", event.target.value)}
-              placeholder="每行一个节点名称 / UUID，也可以用逗号分隔"
-              className="surface-inset min-h-[112px] w-full resize-y px-3 py-2 text-[13px] outline-none"
-            />
-          </label>
-        </div>
-      </InstancePanel>
-
-      <InstancePanel
-        kicker={<><span className="instance-panel-kicker-num">08</span>溢价</>}
-        title="收购溢价"
-        description="填写实际收购价（人民币），系统使用当前价格、周期、到期日和汇率回算收购日的剩余价值，再固化溢价（收购价 − 收购日剩余价值，可正可负）。后续续费和汇率变化不会自动改写；主动修改收购日期时会重新计算并固化。收购日期同时用于溢价月摊与尚未摊销价值；免费节点的收购价全额记为溢价，留空即清除记录。"
-        aside={
-          <div className="text-[11px] text-[var(--text-tertiary)]">
-            {clientsLoading ? "载入中" : `已设置 ${premiumConfiguredCount} 个节点`}
-          </div>
-        }
-      >
-        <div className="flex flex-col gap-3">
-          <label className="surface-inset flex items-center gap-2 px-3 py-2">
-            <Search size={14} className="text-[var(--text-tertiary)]" />
-            <input
-              value={premiumSearch}
-              onChange={(event) => setPremiumSearch(event.target.value)}
-              placeholder="搜索节点名称 / UUID / 分组 / 地区"
-              aria-label="搜索节点"
-              className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-tertiary)]"
-            />
-          </label>
-
-          {clientsLoading && (
-            <div className="flex min-h-[15vh] items-center justify-center">
-              <Spinner size={24} />
-            </div>
-          )}
-
-          {!clientsLoading && sortedClients.length === 0 && (
-            <div className="theme-manage-empty-state">
-              <span>还没有任何节点。</span>
-            </div>
-          )}
-
-          {!clientsLoading && sortedClients.length > 0 && filteredPremiumClients.length === 0 && (
-            <div className="surface-inset px-4 py-5 text-[13px] text-[var(--text-secondary)]">
-              没有匹配的节点。
-            </div>
-          )}
-
-          {!clientsLoading && filteredPremiumClients.length > 0 && (
-            <PremiumList
-              clients={filteredPremiumClients}
-              costPremiums={draft.costPremiums}
-              detailByUuid={premiumDetailByUuid}
-              rateLoading={premiumRateQuery.isLoading}
-              acquiredAtMax={acquiredAtMax}
-              onPatchPaid={patchPremiumPaid}
-              onPatchAcquiredAt={patchPremiumAcquiredAt}
-            />
-          )}
-        </div>
-      </InstancePanel>
-
-      <InstancePanel
-        kicker={<><span className="instance-panel-kicker-num">09</span>延迟</>}
-        title="主页延迟检测"
-        // 用模板字符串拼：JSX 文本换行会在「配置，」和「主题读不到」之间多出一个空格。
-        description={`CF-Server-Monitor 的探测线路由后端固定，共 ${sortedTasks.length} 条（${sortedTasks
-          .map((task) => task.name)
-          .join(" / ")}）；探测目标与探测方式都在后台的服务器编辑里配置，主题读不到，没配探测目标的线路没有数据。`}
-      >
-        <div className="flex flex-col gap-4">
-          {/* 大卡片 / 小卡片显示哪种：单线路还是多线路。原来是个复选框，和下面的单线路设置
-              混在一排，看不出「哪些设置属于哪种模式」—— 换成分段切换，选中哪种就只展开哪种的设置。 */}
-          <div className="surface-inset px-4 py-4">
-            <div className="min-w-0">
-              <span className="block text-[13px] font-medium text-[var(--text-primary)]">
-                大卡片 / 小卡片显示
-              </span>
-              <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-                迷你卡片与列表放不下多行，始终按单线路显示，不受这里影响。
-              </span>
-            </div>
-            {/* 整行、等宽、强调色实心：这是本板块的总开关，得一眼看出选中的是哪种。 */}
-            <div className="instance-segmented is-prominent mt-3">
-              {HOMEPAGE_PING_MODE_OPTIONS.map(({ value, label, icon: Icon }) => {
-                const active = draft.enableHomepageMultiPing === value;
-                return (
-                  <button
-                    key={label}
-                    type="button"
-                    data-active={active ? "true" : "false"}
-                    aria-pressed={active}
-                    disabled={
-                      value && !tasksLoading && sortedTasks.length < HOMEPAGE_MULTI_PING_MIN_COUNT
-                    }
-                    onClick={() => patch("enableHomepageMultiPing", value)}
-                    className="inline-flex items-center justify-center gap-2"
-                  >
-                    <Icon size={15} />
-                    <span>{label}</span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {draft.enableHomepageMultiPing ? (
-              <div className="mt-4 border-t border-[var(--hairline)] pt-4">
-                <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="text-[12px] font-medium text-[var(--text-secondary)]">
-                    显示这些线路（按顺序）
-                  </span>
-                  <span className="text-[11px] text-[var(--text-tertiary)]">
-                    已选 {draft.homepageMultiPingTaskIds.length} / {multiPingSlotLimit} 条
-                  </span>
-                </div>
-                {/* 槽位数量跟着已选条数走。「移除」是紧挨着下拉框的小 × ——
-                    放在标签行右端时会紧贴下一列的标签，看着像是下一条线路的按钮。 */}
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {draft.homepageMultiPingTaskIds.map((selectedTaskId, slot) => (
-                    // key 用槽位号、不带线路 id：互换会同时改两个槽位，带 id 的话两个都重新挂载，
-                    // 刚操作的下拉框丢焦点，键盘上下切线路切一下就断。
-                    <div key={slot} className="min-w-0">
-                      <label
-                        htmlFor={`multi-ping-slot-${slot}`}
-                        className="mb-1.5 block text-[11px] font-medium text-[var(--text-secondary)]"
-                      >
-                        线路 {slot + 1}
-                      </label>
-                      <div className="flex items-center gap-1.5">
-                        <select
-                          id={`multi-ping-slot-${slot}`}
-                          value={selectedTaskId}
-                          onChange={(event) =>
-                            patchMultiPingTask(slot, event.target.value)
-                          }
-                          className="surface-inset min-w-0 flex-1 px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
-                        >
-                          {!sortedTasks.some((task) => task.id === selectedTaskId) && (
-                            <option value={selectedTaskId}>
-                              任务 #{selectedTaskId}（当前不可用）
-                            </option>
-                          )}
-                          {sortedTasks.map((task) => {
-                            const usedAt = draft.homepageMultiPingTaskIds.indexOf(task.id);
-                            const swapsWith = task.id !== selectedTaskId ? usedAt : -1;
-                            return (
-                              <option key={task.id} value={task.id}>
-                                {`${task.name || `任务 #${task.id}`}${
-                                  swapsWith >= 0 ? `（与线路 ${swapsWith + 1} 互换）` : ""
-                                }`}
-                              </option>
-                            );
-                          })}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => removeMultiPingTask(slot)}
-                          disabled={
-                            draft.homepageMultiPingTaskIds.length <=
-                            HOMEPAGE_MULTI_PING_MIN_COUNT
-                          }
-                          aria-label={`移除线路 ${slot + 1}`}
-                          title="移除这条线路"
-                          className="surface-inset flex h-[34px] w-[34px] shrink-0 items-center justify-center text-[var(--text-tertiary)] transition-colors hover:border-[var(--status-error)] hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-[var(--hairline)] disabled:hover:text-[var(--text-tertiary)]"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    </div>
                   ))}
                 </div>
-                <div className="mt-3 flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={addMultiPingTask}
-                    disabled={
-                      draft.homepageMultiPingTaskIds.length >= multiPingSlotLimit
-                    }
-                    className="surface-inset inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-500)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--hairline)]"
-                  >
-                    <Plus size={13} />
-                    添加线路
-                  </button>
-                  <span
-                    className={clsx(
-                      "text-[11px] leading-relaxed",
-                      draftMultiPingInvalid
-                        ? "text-[var(--status-error)]"
-                        : "text-[var(--text-tertiary)]",
-                    )}
-                    role={draftMultiPingInvalid ? "alert" : undefined}
-                  >
-                    {draftMultiPingInvalid
-                      ? "至少选 1 条线路后再保存，否则会回退到单线路模式。"
-                      : "某条线路没有节点样本时保留该行并显示“无样本”。"}
-                  </span>
+              </InstancePanel>
+
+              <InstancePanel
+                id="set-view"
+                kicker="视图"
+                title="默认卡片视图"
+                description="分别设置桌面端与移动端的默认卡片尺寸；首页右上角按钮只临时切换当前设备的显示。"
+                aside={<LayoutGrid size={16} />}
+              >
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="surface-inset flex flex-col gap-3 px-4 py-4">
+                    <div>
+                      <div className="text-[13px] font-semibold text-[var(--text-primary)]">
+                        桌面端默认
+                      </div>
+                      <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                        适用于宽度大于 720px 的浏览器窗口。
+                      </div>
+                    </div>
+                    <div className="instance-segmented is-scrollable">
+                      {NODE_VIEW_MODE_OPTIONS.map(({ value, label, icon: Icon }) => (
+                        <button
+                          key={value}
+                          type="button"
+                          data-active={draft.desktopNodeViewMode === value ? "true" : "false"}
+                          aria-pressed={draft.desktopNodeViewMode === value}
+                          onClick={() => patch("desktopNodeViewMode", value)}
+                          className="inline-flex items-center justify-center gap-2"
+                        >
+                          <Icon size={14} />
+                          <span>{label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="surface-inset flex flex-col gap-3 px-4 py-4">
+                    <div>
+                      <div className="text-[13px] font-semibold text-[var(--text-primary)]">
+                        移动端默认
+                      </div>
+                      <div className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+                        适用于宽度小于等于 720px 的手机或窄屏窗口。
+                      </div>
+                    </div>
+                    <div className="instance-segmented is-scrollable">
+                      {MOBILE_VIEW_MODE_OPTIONS.map(({ value, label, icon: Icon }) => (
+                        <button
+                          key={value}
+                          type="button"
+                          data-active={draft.mobileNodeViewMode === value ? "true" : "false"}
+                          aria-pressed={draft.mobileNodeViewMode === value}
+                          onClick={() => patch("mobileNodeViewMode", value)}
+                          className="inline-flex items-center justify-center gap-2"
+                        >
+                          <Icon size={14} />
+                          <span>{label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <p className="mt-4 border-t border-[var(--hairline)] pt-4 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-                每台节点只显示一条线路，用下面「单线路设置」里的默认线路；个别节点想看别的线路，
-                在那里单独指定。
-              </p>
-            )}
-          </div>
+              </InstancePanel>
 
-          {/* 单线路设置。选了多线路就整块收起来 —— 但不能删掉：迷你卡片与列表永远走单线路，
-              这里是它们唯一的设置入口，所以收起后仍留一行可以展开。 */}
-          <div className="surface-inset px-4 py-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <span className="block text-[13px] font-medium text-[var(--text-primary)]">
-                  单线路设置
-                </span>
-                <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-                  {draft.enableHomepageMultiPing
-                    ? "大/小卡片当前走多线路，用不到这组；迷你卡片与列表仍按单线路显示，要改再展开。"
-                    : "作用于所有视图。"}
-                </span>
-              </div>
-              {draft.enableHomepageMultiPing ? (
-                <button
-                  type="button"
-                  onClick={() => setShowSingleLineSettings((open) => !open)}
-                  aria-expanded={showSingleLineSettings}
-                  className="surface-inset inline-flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-500)] hover:text-[var(--text-primary)]"
-                >
-                  {showSingleLineSettings ? (
-                    <>
-                      <ChevronUp size={13} />
-                      收起
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown size={13} />
-                      展开设置
-                    </>
-                  )}
-                </button>
-              ) : null}
-            </div>
-
-            {singleLineSettingsOpen && (
-              <>
-                {/* 默认线路：原来是标题行右端一个窄下拉，混在一堆文字里看不见。挪到正文、
-                    用和模式切换同一套整行分段控件，选中项强调色实心。 */}
-                <div className="mt-4 border-t border-[var(--hairline)] pt-4">
-                  <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="text-[12px] font-medium text-[var(--text-secondary)]">
-                      默认线路
-                    </span>
-                    <span className="text-[11px] text-[var(--text-tertiary)]">
-                      没单独指定的节点都走这条
+              <InstancePanel
+                id="set-opacity"
+                kicker="背景"
+                title="卡片透明度"
+                description="背景图由后台「外观设置」统一下发到所有主题，这里只调节本主题卡片的不透明度；调低后会自动叠加可读性遮罩。"
+                aside={<Wallpaper size={16} />}
+              >
+                <div className="flex flex-col gap-4">
+                  <div className="surface-inset flex flex-col gap-3 px-4 py-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="text-[13px] font-semibold text-[var(--text-primary)]">
+                        卡片不透明度
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={1}
+                          inputMode="numeric"
+                          value={draft.surfaceOpacity}
+                          onChange={(event) => {
+                            // Number("") === 0,没有这行的话清空输入框(想重新输入)会把值跳成 0。
+                            if (event.target.value.trim() === "") return;
+                            const next = Number(event.target.value);
+                            if (!Number.isFinite(next)) return;
+                            patch("surfaceOpacity", Math.min(100, Math.max(0, Math.round(next))));
+                          }}
+                          aria-label="卡片不透明度百分比"
+                          className="surface-inset w-20 px-3 py-2 text-right text-[13px] tabular outline-none"
+                        />
+                        <span className="text-[13px] font-medium text-[var(--text-tertiary)]">%</span>
+                      </span>
+                    </div>
+                    <span className="text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                      输入 0–100 的整数。100 = 完全不透明，数值越低卡片越通透、越能透出站点背景图。
+                      低于 95 时会自动叠加一层可读性遮罩，保证文字清晰。
                     </span>
                   </div>
-                  <div className="instance-segmented is-prominent" role="group" aria-label="默认线路">
-                    {!sortedTasks.some(
-                      (task) => task.id === draft.homepageDefaultPingTaskId,
-                    ) && (
+                  <div className="surface-inset px-4 py-3 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                    要更换背景图、站点标题或站点图标，请到 <code>/admin#admin</code> 的外观设置中修改，
+                    它们对所有主题统一生效。
+                  </div>
+                </div>
+              </InstancePanel>
+            </>
+          )}
+
+          {activeTab === "home" && (
+            <>
+              <InstancePanel
+                id="set-home-display"
+                kicker="显示"
+                title="首页显示项"
+                description="首页顶部总览、分组与地区筛选栏，以及卡片上是否显示分组和价格。"
+                aside={<ListFilter size={16} />}
+              >
+                <div className="grid gap-3 md:grid-cols-3">
+                  <ToggleRow
+                    field="showHomeOverview"
+                    title="显示顶部总览"
+                    desc="展示时间、在线数、地区、流量和速率。"
+                    checked={draft.showHomeOverview}
+                    onPatch={patch}
+                  />
+                  <ToggleRow
+                    field="showGroupTabs"
+                    title="显示分组筛选"
+                    desc="根据后端节点分组生成首页 Tab。"
+                    checked={draft.showGroupTabs}
+                    onPatch={patch}
+                  />
+                  <ToggleRow
+                    field="showRegionBar"
+                    title="显示地区筛选"
+                    desc="按节点地区生成国旗筛选栏，点击某地区只看该地区节点。"
+                    checked={draft.showRegionBar}
+                    onPatch={patch}
+                  />
+                  <ToggleRow
+                    field="showCardGroup"
+                    title="卡片显示分组"
+                    desc="关闭后卡片内不再显示节点分组名（不影响分组筛选栏与备注）。"
+                    checked={draft.showCardGroup}
+                    onPatch={patch}
+                  />
+                  <ToggleRow
+                    field="showCardPrice"
+                    title="卡片显示价格"
+                    desc="关闭后大卡片内不再显示价格。"
+                    checked={draft.showCardPrice}
+                    onPatch={patch}
+                  />
+                  <ToggleRow
+                    field="enableHomeSort"
+                    title="启用排序切换"
+                    desc="首页显示排序控件，访客可临时切换排序方式（离线节点恒定置底）。"
+                    checked={draft.enableHomeSort}
+                    onPatch={patch}
+                  />
+                </div>
+
+              </InstancePanel>
+
+              <InstancePanel
+                id="set-home-sort"
+                kicker="排序"
+                title="排序与分组"
+                description="首次访问时的排序方式，以及首页分组 Tab 的先后顺序；访客可临时切换排序。"
+                aside={<ArrowUpDown size={16} />}
+              >
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)]">
+                  <div>
+                    <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <span className="text-[13px] font-medium text-[var(--text-primary)]">默认排序维度</span>
+                      <span className="text-[11px] text-[var(--text-tertiary)]">
+                        首次访问时的初始排序；访客可临时切换。
+                      </span>
+                    </div>
+                    <div className="instance-segmented is-scrollable">
+                      {HOME_SORT_FIELDS.map((field) => (
+                        <button
+                          key={field}
+                          type="button"
+                          data-active={draft.homeSortField === field ? "true" : "false"}
+                          aria-pressed={draft.homeSortField === field}
+                          disabled={!draft.enableHomeSort}
+                          onClick={() => patch("homeSortField", field)}
+                        >
+                          {HOME_SORT_FIELD_LABELS[field]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-2 text-[13px] font-medium text-[var(--text-primary)]">默认方向</div>
+                    <div className="instance-segmented">
                       <button
                         type="button"
-                        data-active="true"
-                        aria-pressed
-                        disabled
-                        className="inline-flex items-center justify-center"
+                        data-active={draft.homeSortDirection === "asc" ? "true" : "false"}
+                        aria-pressed={draft.homeSortDirection === "asc"}
+                        disabled={!draft.enableHomeSort}
+                        onClick={() => patch("homeSortDirection", "asc")}
                       >
-                        任务 #{draft.homepageDefaultPingTaskId}（当前不可用）
+                        升序
                       </button>
-                    )}
-                    {sortedTasks.map((task) => {
-                      const active = task.id === draft.homepageDefaultPingTaskId;
-                      return (
-                        <button
-                          key={task.id}
-                          type="button"
-                          data-active={active ? "true" : "false"}
-                          aria-pressed={active}
-                          onClick={() => patch("homepageDefaultPingTaskId", task.id)}
-                          className="inline-flex items-center justify-center"
+                      <button
+                        type="button"
+                        data-active={draft.homeSortDirection === "desc" ? "true" : "false"}
+                        aria-pressed={draft.homeSortDirection === "desc"}
+                        disabled={!draft.enableHomeSort}
+                        onClick={() => patch("homeSortDirection", "desc")}
+                      >
+                        降序
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <span className="text-[13px] font-medium text-[var(--text-primary)]">分组排序</span>
+                    <span className="text-[11px] text-[var(--text-tertiary)]">
+                      调整首页分组 Tab 的显示顺序；未列出的分组按后端顺序排在后面。
+                    </span>
+                  </div>
+                  {orderedDraftGroups.length === 0 ? (
+                    <p className="surface-inset mt-2 px-4 py-3 text-[12px] text-[var(--text-tertiary)]">
+                      {clientsLoading ? "正在加载分组…" : "暂无分组（节点未设置分组时无需排序）"}
+                    </p>
+                  ) : (
+                    <ul className="mt-2 flex flex-col gap-2">
+                      {orderedDraftGroups.map((group, index) => (
+                        <li
+                          key={group}
+                          className="surface-inset flex items-center justify-between gap-3 px-4 py-2.5"
                         >
-                          {task.name || `任务 #${task.id}`}
-                        </button>
+                          <span className="flex min-w-0 items-center gap-2">
+                            <span className="tabular text-[12px] text-[var(--text-tertiary)]">
+                              {index + 1}
+                            </span>
+                            <span
+                              className="truncate text-[13px] text-[var(--text-primary)]"
+                              title={group}
+                            >
+                              {group}
+                            </span>
+                          </span>
+                          <span className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              disabled={index === 0}
+                              onClick={() => moveGroup(index, -1)}
+                              className="theme-manage-button is-compact"
+                              aria-label={`上移 ${group}`}
+                            >
+                              <ChevronUp size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={index === orderedDraftGroups.length - 1}
+                              onClick={() => moveGroup(index, 1)}
+                              className="theme-manage-button is-compact"
+                              aria-label={`下移 ${group}`}
+                            >
+                              <ChevronDown size={14} />
+                            </button>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+              </InstancePanel>
+
+              <InstancePanel
+                id="set-home-ratings"
+                kicker="评级"
+                title="总览评级"
+                description="在累计流量、实时带宽、资产概览右下角显示文字评级；名称用英文逗号分隔，只取前四个。"
+                aside={<Sparkles size={16} />}
+              >
+                <div className="surface-inset px-4 py-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-semibold text-[var(--text-primary)]">
+                        三处总览
+                      </span>
+                      <span className="mt-1 block text-[11px] text-[var(--text-tertiary)]">
+                        关掉这里，三处评级一起不显示。
+                      </span>
+                    </span>
+                    <label className="inline-flex shrink-0 items-center gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+                      <span>启用</span>
+                      <input
+                        type="checkbox"
+                        checked={draft.showOverviewRatings}
+                        onChange={(event) => patch("showOverviewRatings", event.target.checked)}
+                        className="h-4 w-4 accent-[var(--accent-500)]"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    {OVERVIEW_RATING_LABEL_FIELDS.map((field) => {
+                      const defaultLabel = getDefaultOverviewRatingLabelText(field.key);
+                      const ratingEnabled = draft.showOverviewRatings && draft[field.toggleKey];
+                      return (
+                        <div key={field.key} className="flex min-w-0 flex-col gap-2">
+                          <label className="flex items-center justify-between gap-2 text-[12px] font-medium text-[var(--text-secondary)]">
+                            <span>{field.title}</span>
+                            <input
+                              type="checkbox"
+                              checked={draft[field.toggleKey]}
+                              disabled={!draft.showOverviewRatings}
+                              onChange={(event) => patch(field.toggleKey, event.target.checked)}
+                              className="h-4 w-4 shrink-0 accent-[var(--accent-500)]"
+                            />
+                          </label>
+                          <input
+                            value={draft.ratingLabels[field.key]}
+                            disabled={!ratingEnabled}
+                            onChange={(event) => setRatingLabelDraft(field.key, event.target.value)}
+                            placeholder={defaultLabel}
+                            aria-label={`${field.title}评级名称`}
+                            className="surface-inset w-full px-3 py-2 text-[13px] outline-none disabled:opacity-60"
+                          />
+                          <span className="text-[11px] text-[var(--text-tertiary)]">
+                            例如: {defaultLabel}
+                          </span>
+                        </div>
                       );
                     })}
                   </div>
-                  <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-                    新加的节点也自动跟着它，不用回来一台台绑；个别节点想看别的线路，用下面的逐节点指定。
-                  </p>
                 </div>
+              </InstancePanel>
 
-                <div className="mt-4 border-t border-[var(--hairline)] pt-4">
-                  <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="text-[12px] font-medium text-[var(--text-secondary)]">
-                      逐节点指定（可选）
-                    </span>
+              <InstancePanel
+                id="set-hidden"
+                kicker="隐藏"
+                title="隐藏节点"
+                description="在此填写的节点会从首页彻底移除：不显示卡片，也不计入在线数、累计流量、实时带宽与资产等所有统计。对所有访客生效，清空即可恢复。"
+                aside={<EyeOff size={16} />}
+              >
+                <label className="flex min-w-0 flex-col gap-2">
+                  <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                    隐藏列表
+                  </span>
+                  <textarea
+                    value={draft.hiddenNodesText}
+                    onChange={(event) => patch("hiddenNodesText", event.target.value)}
+                    placeholder="每行一个节点名称 / UUID，也可以用逗号分隔"
+                    className="surface-inset min-h-[112px] w-full resize-y px-3 py-2 text-[13px] outline-none"
+                  />
+                  <span className="text-[11px] text-[var(--text-tertiary)]">
+                    已隐藏 {draftHiddenNodes.length} 个节点。按名称或 UUID 匹配，大小写不敏感。
+                  </span>
+                </label>
+              </InstancePanel>
+            </>
+          )}
+
+          {activeTab === "card" && (
+            <>
+              <InstancePanel
+                id="set-card"
+                kicker="卡片"
+                title="卡片显示项"
+                description="分别管理跨卡片视图的功能入口，以及小卡片专属的信息密度。"
+                aside={<Rows3 size={16} />}
+              >
+                <div>
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <span className="text-[13px] font-medium text-[var(--text-primary)]">跨视图设置</span>
                     <span className="text-[11px] text-[var(--text-tertiary)]">
-                      已单独指定 {assignedNodeCount} / {sortedClients.length} 台
+                      适用于多个卡片尺寸，具体范围以每项说明为准。
                     </span>
                   </div>
+                  <div className="mt-2 grid gap-3 md:grid-cols-2">
+                    <ToggleRow
+                      field="showConnections"
+                      title="显示连接数（TCP/UDP）"
+                      desc="在大卡片与小卡片展示实时 TCP / UDP 连接数；需被控端上报，未上报显示 0。默认关闭。"
+                      checked={draft.showConnections}
+                      onPatch={patch}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <span className="text-[13px] font-medium text-[var(--text-primary)]">小卡片专属</span>
+                    <span className="text-[11px] text-[var(--text-tertiary)]">
+                      控制小卡片中间信息块的密度；实时速率始终显示。
+                    </span>
+                  </div>
+                  <div className="mt-2 grid gap-3 md:grid-cols-2">
+                    <ToggleRow
+                      field="compactShowTrafficTotal"
+                      title="显示累计流量"
+                      desc="展示出站与入站累计流量。"
+                      checked={draft.compactShowTrafficTotal}
+                      onPatch={patch}
+                    />
+                    <ToggleRow
+                      field="compactShowBilling"
+                      title="显示费用到期"
+                      desc="展示续费价格与剩余天数。"
+                      checked={draft.compactShowBilling}
+                      onPatch={patch}
+                    />
+                    <ToggleRow
+                      field="compactShowUptime"
+                      title="显示在线时间"
+                      desc="在小卡片流量栏右侧展示在线时长。默认开启。"
+                      checked={draft.compactShowUptime}
+                      onPatch={patch}
+                    />
+                  </div>
+                </div>
+              </InstancePanel>
+            </>
+          )}
+
+          {activeTab === "cost" && (
+            <>
+              <InstancePanel
+                id="set-cost"
+                kicker="花费"
+                title="服务器花费"
+                description="资产统计页（/assets）使用实时汇率计算年化总支出、月均支出与剩余价值；忽略列表中的节点不会计入费用。两个入口开关都关闭时，直接访问资产页也会跳回首页。"
+                aside={<CircleDollarSign size={16} />}
+              >
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
+                  <div className="flex flex-col gap-3">
+                    <ToggleRow
+                      field="showCostSummary"
+                      title="显示资产页入口按钮"
+                      desc="在首页资产概览卡右上角显示进入资产统计页的按钮。"
+                      checked={draft.showCostSummary}
+                      onPatch={patch}
+                    />
+                    <ToggleRow
+                      field="showCostSummaryFloatingButton"
+                      title="显示资产悬浮按钮"
+                      desc="卡内入口不可用时（总览隐藏或其开关关闭），以悬浮按钮进入资产统计页。"
+                      checked={draft.showCostSummaryFloatingButton}
+                      onPatch={patch}
+                    />
+                    <label className="flex flex-col gap-2">
+                      <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                        实时汇率接口
+                      </span>
+                      <input
+                        value={draft.costRateApiUrl}
+                        onChange={(event) => patch("costRateApiUrl", event.target.value)}
+                        placeholder={DEFAULT_THEME_SETTINGS.costRateApiUrl}
+                        aria-invalid={draftCostRateApiUrlInvalid}
+                        className="surface-inset w-full px-3 py-2 text-[13px] outline-none"
+                      />
+                      {draftCostRateApiUrlInvalid && (
+                        <span className="text-[12px] text-[var(--status-offline)]">
+                          请输入 http(s) 链接，保存后将回退默认接口
+                        </span>
+                      )}
+                    </label>
+                  </div>
+                  <label className="flex min-w-0 flex-col gap-2">
+                    <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                      忽略计费节点
+                    </span>
+                    <textarea
+                      value={draft.costIgnoredText}
+                      onChange={(event) => patch("costIgnoredText", event.target.value)}
+                      placeholder="每行一个节点名称 / UUID，也可以用逗号分隔"
+                      className="surface-inset min-h-[112px] w-full resize-y px-3 py-2 text-[13px] outline-none"
+                    />
+                  </label>
+                </div>
+              </InstancePanel>
+
+              <InstancePanel
+                id="set-premium"
+                kicker="溢价"
+                title="收购溢价"
+                description="填写实际收购价（人民币），系统使用当前价格、周期、到期日和汇率回算收购日的剩余价值，再固化溢价（收购价 − 收购日剩余价值，可正可负）。后续续费和汇率变化不会自动改写；主动修改收购日期时会重新计算并固化。收购日期同时用于溢价月摊与尚未摊销价值；免费节点的收购价全额记为溢价，留空即清除记录。"
+                aside={
+                  <div className="text-[11px] text-[var(--text-tertiary)]">
+                    {clientsLoading ? "载入中" : `已设置 ${premiumConfiguredCount} 个节点`}
+                  </div>
+                }
+                titleAction={
+                  <button
+                    type="button"
+                    onClick={() => setShowPremiumList((open) => !open)}
+                    aria-expanded={showPremiumList}
+                    className="theme-manage-button is-compact"
+                  >
+                    {showPremiumList ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    {showPremiumList ? "收起" : "展开"}
+                  </button>
+                }
+              >
+                {/* 一台节点一行、还带日期与金额输入，节点多时这块比整页其余设置都长：默认收起。 */}
+                {showPremiumList ? (
+                  <div className="flex flex-col gap-3">
+                    <label className="surface-inset flex items-center gap-2 px-3 py-2">
+                      <Search size={14} className="text-[var(--text-tertiary)]" />
+                      <input
+                        value={premiumSearch}
+                        onChange={(event) => setPremiumSearch(event.target.value)}
+                        placeholder="搜索节点名称 / UUID / 分组 / 地区"
+                        aria-label="搜索节点"
+                        className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-tertiary)]"
+                      />
+                    </label>
+
+                    {clientsLoading && (
+                      <div className="flex min-h-[15vh] items-center justify-center">
+                        <Spinner size={24} />
+                      </div>
+                    )}
+
+                    {!clientsLoading && sortedClients.length === 0 && (
+                      <div className="theme-manage-empty-state">
+                        <span>还没有任何节点。</span>
+                      </div>
+                    )}
+
+                    {!clientsLoading && sortedClients.length > 0 && filteredPremiumClients.length === 0 && (
+                      <div className="surface-inset px-4 py-5 text-[13px] text-[var(--text-secondary)]">
+                        没有匹配的节点。
+                      </div>
+                    )}
+
+                    {!clientsLoading && filteredPremiumClients.length > 0 && (
+                      <PremiumList
+                        clients={filteredPremiumClients}
+                        costPremiums={draft.costPremiums}
+                        detailByUuid={premiumDetailByUuid}
+                        rateLoading={premiumRateQuery.isLoading}
+                        acquiredAtMax={acquiredAtMax}
+                        onPatchPaid={patchPremiumPaid}
+                        onPatchAcquiredAt={patchPremiumAcquiredAt}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <p className="surface-inset px-4 py-3 text-[12px] text-[var(--text-tertiary)]">
+                    {premiumConfiguredCount > 0
+                      ? `已为 ${premiumConfiguredCount} 个节点记了收购溢价，展开可以查看和修改。`
+                      : "还没有节点记收购溢价。展开后填写收购价即可。"}
+                  </p>
+                )}
+              </InstancePanel>
+            </>
+          )}
+
+          {activeTab === "ping" && (
+            <>
+              <InstancePanel
+                id="set-ping"
+                kicker="线路"
+                title="主页延迟检测"
+                // 用模板字符串拼：JSX 文本换行会在「配置，」和「主题读不到」之间多出一个空格。
+                description={`CF-Server-Monitor 的探测线路由后端固定，共 ${sortedTasks.length} 条（${sortedTasks
+                  .map((task) => task.name)
+                  .join(" / ")}）；探测目标与探测方式都在后台的服务器编辑里配置，主题读不到，没配探测目标的线路没有数据。`}
+              >
+                <div className="flex flex-col gap-4">
+                  {/* 大卡片 / 小卡片显示哪种：单线路还是多线路。原来是个复选框，和下面的单线路设置
+                      混在一排，看不出「哪些设置属于哪种模式」—— 换成分段切换，选中哪种就只展开哪种的设置。 */}
+                  <div className="surface-inset px-4 py-4">
+                    <div className="min-w-0">
+                      <span className="block text-[13px] font-medium text-[var(--text-primary)]">
+                        大卡片 / 小卡片显示
+                      </span>
+                      <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                        迷你卡片与列表放不下多行，始终按单线路显示，不受这里影响。
+                      </span>
+                    </div>
+                    {/* 整行、等宽、强调色实心：这是本板块的总开关，得一眼看出选中的是哪种。 */}
+                    <div className="instance-segmented is-prominent mt-3">
+                      {HOMEPAGE_PING_MODE_OPTIONS.map(({ value, label, icon: Icon }) => {
+                        const active = draft.enableHomepageMultiPing === value;
+                        return (
+                          <button
+                            key={label}
+                            type="button"
+                            data-active={active ? "true" : "false"}
+                            aria-pressed={active}
+                            disabled={
+                              value && !tasksLoading && sortedTasks.length < HOMEPAGE_MULTI_PING_MIN_COUNT
+                            }
+                            onClick={() => patch("enableHomepageMultiPing", value)}
+                            className="inline-flex items-center justify-center gap-2"
+                          >
+                            <Icon size={15} />
+                            <span>{label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {draft.enableHomepageMultiPing ? (
+                      <div className="mt-4 border-t border-[var(--hairline)] pt-4">
+                        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                          <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                            显示这些线路（按顺序）
+                          </span>
+                          <span className="text-[11px] text-[var(--text-tertiary)]">
+                            已选 {draft.homepageMultiPingTaskIds.length} / {multiPingSlotLimit} 条
+                          </span>
+                        </div>
+                        {/* 槽位数量跟着已选条数走。「移除」是紧挨着下拉框的小 × ——
+                            放在标签行右端时会紧贴下一列的标签，看着像是下一条线路的按钮。 */}
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          {draft.homepageMultiPingTaskIds.map((selectedTaskId, slot) => (
+                            // key 用槽位号、不带线路 id：互换会同时改两个槽位，带 id 的话两个都重新挂载，
+                            // 刚操作的下拉框丢焦点，键盘上下切线路切一下就断。
+                            <div key={slot} className="min-w-0">
+                              <label
+                                htmlFor={`multi-ping-slot-${slot}`}
+                                className="mb-1.5 block text-[11px] font-medium text-[var(--text-secondary)]"
+                              >
+                                线路 {slot + 1}
+                              </label>
+                              <div className="flex items-center gap-1.5">
+                                <select
+                                  id={`multi-ping-slot-${slot}`}
+                                  value={selectedTaskId}
+                                  onChange={(event) =>
+                                    patchMultiPingTask(slot, event.target.value)
+                                  }
+                                  className="surface-inset min-w-0 flex-1 px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
+                                >
+                                  {!sortedTasks.some((task) => task.id === selectedTaskId) && (
+                                    <option value={selectedTaskId}>
+                                      任务 #{selectedTaskId}（当前不可用）
+                                    </option>
+                                  )}
+                                  {sortedTasks.map((task) => {
+                                    const usedAt = draft.homepageMultiPingTaskIds.indexOf(task.id);
+                                    const swapsWith = task.id !== selectedTaskId ? usedAt : -1;
+                                    return (
+                                      <option key={task.id} value={task.id}>
+                                        {`${task.name || `任务 #${task.id}`}${
+                                          swapsWith >= 0 ? `（与线路 ${swapsWith + 1} 互换）` : ""
+                                        }`}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => removeMultiPingTask(slot)}
+                                  disabled={
+                                    draft.homepageMultiPingTaskIds.length <=
+                                    HOMEPAGE_MULTI_PING_MIN_COUNT
+                                  }
+                                  aria-label={`移除线路 ${slot + 1}`}
+                                  title="移除这条线路"
+                                  className="surface-inset flex h-[34px] w-[34px] shrink-0 items-center justify-center text-[var(--text-tertiary)] transition-colors hover:border-[var(--status-error)] hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-[var(--hairline)] disabled:hover:text-[var(--text-tertiary)]"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={addMultiPingTask}
+                            disabled={
+                              draft.homepageMultiPingTaskIds.length >= multiPingSlotLimit
+                            }
+                            className="surface-inset inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-500)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--hairline)]"
+                          >
+                            <Plus size={13} />
+                            添加线路
+                          </button>
+                          <span
+                            className={clsx(
+                              "text-[11px] leading-relaxed",
+                              draftMultiPingInvalid
+                                ? "text-[var(--status-error)]"
+                                : "text-[var(--text-tertiary)]",
+                            )}
+                            role={draftMultiPingInvalid ? "alert" : undefined}
+                          >
+                            {draftMultiPingInvalid
+                              ? "至少选 1 条线路后再保存，否则会回退到单线路模式。"
+                              : "某条线路没有节点样本时保留该行并显示“无样本”。"}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-4 border-t border-[var(--hairline)] pt-4 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                        每台节点只显示一条线路，用下面「单线路设置」里的默认线路；个别节点想看别的线路，
+                        用下面的「逐节点指定线路」。
+                      </p>
+                    )}
+                  </div>
+
+                  {/* 单线路设置。选了多线路就整块收起来 —— 但不能删掉：迷你卡片与列表永远走单线路，
+                      这里是它们唯一的设置入口，所以收起后仍留一行可以展开。 */}
+                  <div className="surface-inset px-4 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <span className="block text-[13px] font-medium text-[var(--text-primary)]">
+                          单线路设置
+                        </span>
+                        <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                          {draft.enableHomepageMultiPing
+                            ? "大/小卡片当前走多线路，用不到这组；迷你卡片与列表仍按单线路显示，要改再展开。"
+                            : "作用于所有视图。"}
+                        </span>
+                      </div>
+                      {draft.enableHomepageMultiPing ? (
+                        <button
+                          type="button"
+                          onClick={() => setShowSingleLineSettings((open) => !open)}
+                          aria-expanded={showSingleLineSettings}
+                          className="surface-inset inline-flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-500)] hover:text-[var(--text-primary)]"
+                        >
+                          {showSingleLineSettings ? (
+                            <>
+                              <ChevronUp size={13} />
+                              收起
+                            </>
+                          ) : (
+                            <>
+                              <ChevronDown size={13} />
+                              展开设置
+                            </>
+                          )}
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {singleLineSettingsOpen && (
+                      <>
+                        {/* 默认线路：原来是标题行右端一个窄下拉，混在一堆文字里看不见。挪到正文、
+                            用和模式切换同一套整行分段控件，选中项强调色实心。 */}
+                        <div className="mt-4 border-t border-[var(--hairline)] pt-4">
+                          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                            <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                              默认线路
+                            </span>
+                            <span className="text-[11px] text-[var(--text-tertiary)]">
+                              没单独指定的节点都走这条
+                            </span>
+                          </div>
+                          <div className="instance-segmented is-prominent" role="group" aria-label="默认线路">
+                            {!sortedTasks.some(
+                              (task) => task.id === draft.homepageDefaultPingTaskId,
+                            ) && (
+                              <button
+                                type="button"
+                                data-active="true"
+                                aria-pressed
+                                disabled
+                                className="inline-flex items-center justify-center"
+                              >
+                                任务 #{draft.homepageDefaultPingTaskId}（当前不可用）
+                              </button>
+                            )}
+                            {sortedTasks.map((task) => {
+                              const active = task.id === draft.homepageDefaultPingTaskId;
+                              return (
+                                <button
+                                  key={task.id}
+                                  type="button"
+                                  data-active={active ? "true" : "false"}
+                                  aria-pressed={active}
+                                  onClick={() => patch("homepageDefaultPingTaskId", task.id)}
+                                  className="inline-flex items-center justify-center"
+                                >
+                                  {task.name || `任务 #${task.id}`}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                            新加的节点也自动跟着它，不用回来一台台绑；个别节点想看别的线路，用下面的「逐节点指定线路」。
+                          </p>
+                        </div>
+
+                      </>
+                    )}
+                  </div>
+
+                  <ToggleRow
+                    field="fakePingForUnbound"
+                    title="未绑定节点显示模拟延迟"
+                    desc="所选线路没有探测数据的在线节点显示前端生成的模拟数据（延迟 1-10ms、丢包 0%）。仅用于视觉统一，不代表真实网络质量；后台没有为该节点配置对应线路的探测目标时会出现这种情况。"
+                    checked={draft.fakePingForUnbound}
+                    onPatch={patch}
+                  />
+                </div>
+              </InstancePanel>
+
+              <InstancePanel
+                id="set-ping-bindings"
+                kicker="绑定"
+                title="逐节点指定线路"
+                description="给单台节点指定和默认线路不同的线路；没指定的节点都走上面的默认线路。迷你卡片与列表始终按单线路显示，这里指定的对它们同样生效。"
+                titleAction={
+                  <button
+                    type="button"
+                    onClick={() => setShowNodeBindings((open) => !open)}
+                    aria-expanded={showNodeBindings}
+                    className="theme-manage-button is-compact"
+                  >
+                    {showNodeBindings ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    {showNodeBindings ? "收起" : "展开"}
+                  </button>
+                }
+                aside={
+                  <div className="text-[11px] text-[var(--text-tertiary)]">
+                    {clientsLoading ? "载入中" : `已指定 ${assignedNodeCount} / ${sortedClients.length} 台`}
+                  </div>
+                }
+              >
+                {/* 节点多的时候这块最长（每条线路一张可展开的卡片），默认收起，要绑才展开。 */}
+                {showNodeBindings ? (
+                  <div className="flex flex-col gap-3">
                   <label className="surface-inset mb-3 flex items-center gap-2 px-3 py-2">
                     <Search size={14} className="text-[var(--text-tertiary)]" />
                     <input
@@ -2237,20 +2615,19 @@ export function ThemeManage() {
                         );
                       })}
                   </div>
-                </div>
-              </>
-            )}
-          </div>
-
-          <ToggleRow
-            field="fakePingForUnbound"
-            title="未绑定节点显示模拟延迟"
-            desc="所选线路没有探测数据的在线节点显示前端生成的模拟数据（延迟 1-10ms、丢包 0%）。仅用于视觉统一，不代表真实网络质量；后台没有为该节点配置对应线路的探测目标时会出现这种情况。"
-            checked={draft.fakePingForUnbound}
-            onPatch={patch}
-          />
+                  </div>
+                ) : (
+                  <p className="surface-inset px-4 py-3 text-[12px] text-[var(--text-tertiary)]">
+                    {assignedNodeCount > 0
+                      ? `已有 ${assignedNodeCount} 台节点单独指定了线路，展开可以查看和修改。`
+                      : "还没有节点单独指定线路。展开后按线路勾选要绑定的节点。"}
+                  </p>
+                )}
+              </InstancePanel>
+            </>
+          )}
         </div>
-      </InstancePanel>
+      </div>
     </div>
   );
 }
