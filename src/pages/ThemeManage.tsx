@@ -1687,7 +1687,7 @@ export function ThemeManage() {
                     <div className="setting-subhead">
                       <span className="setting-subhead-title">默认排序维度</span>
                       <span className="setting-hint">
-                        首次访问时的初始排序；访客可临时切换。
+                        首次访问时的顺序。访客能不能自己改，看「首页显示项」里的「启用排序切换」；关掉时所有人都按这里定的顺序看。
                       </span>
                     </div>
                     <div className="instance-segmented is-scrollable">
@@ -1697,7 +1697,6 @@ export function ThemeManage() {
                           type="button"
                           data-active={draft.homeSortField === field ? "true" : "false"}
                           aria-pressed={draft.homeSortField === field}
-                          disabled={!draft.enableHomeSort}
                           onClick={() => patch("homeSortField", field)}
                         >
                           {HOME_SORT_FIELD_LABELS[field]}
@@ -1712,7 +1711,6 @@ export function ThemeManage() {
                         type="button"
                         data-active={draft.homeSortDirection === "asc" ? "true" : "false"}
                         aria-pressed={draft.homeSortDirection === "asc"}
-                        disabled={!draft.enableHomeSort}
                         onClick={() => patch("homeSortDirection", "asc")}
                       >
                         升序
@@ -1721,7 +1719,6 @@ export function ThemeManage() {
                         type="button"
                         data-active={draft.homeSortDirection === "desc" ? "true" : "false"}
                         aria-pressed={draft.homeSortDirection === "desc"}
-                        disabled={!draft.enableHomeSort}
                         onClick={() => patch("homeSortDirection", "desc")}
                       >
                         降序
