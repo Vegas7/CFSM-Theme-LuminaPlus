@@ -810,12 +810,8 @@ export function ThemeManage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
   const activeTab: ThemeTabId = isThemeTabId(tabParam) ? tabParam : DEFAULT_THEME_TAB;
-  // 两块逐节点的长表格默认收起（节点多时它们比其余所有设置加起来还长）。
-  const [showNodeBindings, setShowNodeBindings] = useState(false);
-  const [showPremiumList, setShowPremiumList] = useState(false);
   // 多线路模式下「单线路设置」默认收起（大/小卡片用不到它）。但不能删：迷你卡片与列表永远
   // 走单线路，这里是它们唯一的入口，所以留一个展开按钮。单线路模式下这块恒展开。
-  const [showSingleLineSettings, setShowSingleLineSettings] = useState(false);
   const [taskSearch, setTaskSearch] = useState("");
   const [nodeSearch, setNodeSearch] = useState("");
   const [premiumSearch, setPremiumSearch] = useState("");
@@ -1020,8 +1016,6 @@ export function ThemeManage() {
   sortedTasksRef.current = sortedTasks;
   // 能选几条：后端给几条线路就最多几条，再被主题的上限夹一次（后端以后加线路，
   // 抬 HOMEPAGE_MULTI_PING_MAX_COUNT 即可，这里不用动）。
-  const singleLineSettingsOpen =
-    !draft.enableHomepageMultiPing || showSingleLineSettings;
   const multiPingSlotLimit = Math.min(
     HOMEPAGE_MULTI_PING_MAX_COUNT,
     Math.max(sortedTasks.length, HOMEPAGE_MULTI_PING_MIN_COUNT),
@@ -1998,24 +1992,11 @@ export function ThemeManage() {
                 kicker="溢价"
                 title="收购溢价"
                 aside={<Coins size={16} />}
-                titleAction={
-                  <button
-                    type="button"
-                    onClick={() => setShowPremiumList((open) => !open)}
-                    aria-expanded={showPremiumList}
-                    className="theme-manage-button is-compact"
-                  >
-                    {showPremiumList ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                    {showPremiumList ? "收起" : "展开"}
-                  </button>
-                }
               >
-                {/* 一台节点一行、还带日期与金额输入，节点多时这块比整页其余设置都长：默认收起。 */}
-                {showPremiumList ? (
-                  <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3">
                     <p className="setting-hint">
                       按收购日的剩余价值回算并固化溢价（收购价 − 当日剩余价值，可正可负），之后续费与汇率
-                      变化都不改写；改收购日期会重算，留空即清除记录。
+                      变化都不改写；改收购日期会重算，留空即清除记录。已设置 {premiumConfiguredCount} 个节点。
                     </p>
                     <label className="surface-inset flex items-center gap-2 px-3 py-2">
                       <Search size={14} className="text-[var(--text-tertiary)]" />
@@ -2057,16 +2038,7 @@ export function ThemeManage() {
                         onPatchAcquiredAt={patchPremiumAcquiredAt}
                       />
                     )}
-                  </div>
-                ) : (
-                  <p className="surface-inset px-4 py-3 text-[12px] text-[var(--text-tertiary)]">
-                    {clientsLoading
-                      ? "正在载入节点…"
-                      : premiumConfiguredCount > 0
-                        ? `已为 ${premiumConfiguredCount} 个节点记了收购溢价，展开可以查看和修改。`
-                        : "还没有节点记收购溢价。展开后填写收购价即可。"}
-                  </p>
-                )}
+                </div>
               </InstancePanel>
             </>
           )}
@@ -2216,38 +2188,22 @@ export function ThemeManage() {
                     )}
                   </div>
 
-                  {/* 单线路设置。选了多线路就整块收起来 —— 但不能删掉：迷你卡片与列表永远走单线路，
-                      这里是它们唯一的设置入口，所以收起后仍留一行可以展开。 */}
+                  {/* 单线路设置不能删：迷你卡片与列表永远走单线路，这里是它们唯一的设置入口。 */}
                   <div className="surface-inset px-4 py-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <span className="block setting-subhead-title">
-                          单线路设置
-                        </span>
-                        <span className="mt-1 block setting-hint">
-                          {draft.enableHomepageMultiPing
-                            ? "大/小卡片当前走多线路，用不到这组；迷你卡片与列表仍按单线路显示，要改再展开。"
-                            : "作用于所有视图。"}
-                        </span>
-                      </div>
-                      {draft.enableHomepageMultiPing ? (
-                        <button
-                          type="button"
-                          onClick={() => setShowSingleLineSettings((open) => !open)}
-                          aria-expanded={showSingleLineSettings}
-                          className="theme-manage-button is-compact shrink-0"
-                        >
-                          {showSingleLineSettings ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                          {showSingleLineSettings ? "收起" : "展开"}
-                        </button>
-                      ) : null}
+                    <div className="min-w-0">
+                      <span className="block setting-subhead-title">
+                        单线路设置
+                      </span>
+                      <span className="mt-1 block setting-hint">
+                        {draft.enableHomepageMultiPing
+                          ? "大/小卡片当前走多线路，用不到这组；迷你卡片与列表仍按单线路显示。"
+                          : "作用于所有视图。"}
+                      </span>
                     </div>
 
-                    {singleLineSettingsOpen && (
-                      <>
-                        {/* 默认线路：原来是标题行右端一个窄下拉，混在一堆文字里看不见。挪到正文、
-                            用和模式切换同一套整行分段控件，选中项强调色实心。 */}
-                        <div className="mt-4 border-t border-[var(--hairline)] pt-4">
+                    {/* 默认线路：原来是标题行右端一个窄下拉，混在一堆文字里看不见。挪到正文、
+                        用和模式切换同一套整行分段控件，选中项强调色实心。 */}
+                    <div className="mt-4 border-t border-[var(--hairline)] pt-4">
                           <div className="setting-subhead">
                             <span className="setting-field-label">
                               默认线路
@@ -2290,9 +2246,6 @@ export function ThemeManage() {
                             新加的节点也自动跟着它，不用回来一台台绑；个别节点想看别的线路，用下面的「逐节点指定线路」。
                           </p>
                         </div>
-
-                      </>
-                    )}
                   </div>
 
                   <ToggleRow
@@ -2310,21 +2263,12 @@ export function ThemeManage() {
                 kicker="绑定"
                 title="逐节点指定线路"
                 aside={<Network size={16} />}
-                titleAction={
-                  <button
-                    type="button"
-                    onClick={() => setShowNodeBindings((open) => !open)}
-                    aria-expanded={showNodeBindings}
-                    className="theme-manage-button is-compact"
-                  >
-                    {showNodeBindings ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                    {showNodeBindings ? "收起" : "展开"}
-                  </button>
-                }
               >
-                {/* 节点多的时候这块最长（每条线路一张可展开的卡片），默认收起，要绑才展开。 */}
-                {showNodeBindings ? (
-                  <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3">
+                  <p className="setting-hint">
+                    没指定的节点都走上面的默认线路；迷你卡片与列表始终按单线路显示，这里指定的对它们同样生效。
+                    已单独指定 {assignedNodeCount} / {sortedClients.length} 台。
+                  </p>
                   <label className="surface-inset mb-3 flex items-center gap-2 px-3 py-2">
                     <Search size={14} className="text-[var(--text-tertiary)]" />
                     <input
@@ -2382,16 +2326,7 @@ export function ThemeManage() {
                         );
                       })}
                   </div>
-                  </div>
-                ) : (
-                  <p className="surface-inset px-4 py-3 text-[12px] text-[var(--text-tertiary)]">
-                    {clientsLoading
-                      ? "正在载入节点…"
-                      : assignedNodeCount > 0
-                        ? `已有 ${assignedNodeCount} / ${sortedClients.length} 台节点单独指定了线路，展开可以查看和修改。`
-                        : "还没有节点单独指定线路。展开后按线路勾选要绑定的节点。"}
-                  </p>
-                )}
+                </div>
               </InstancePanel>
             </>
           )}
