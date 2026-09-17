@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentPropsWithoutRef,
+} from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -397,6 +405,29 @@ const ToggleRow = memo(function ToggleRow({
     </label>
   );
 });
+
+// 设置页的下拉框：原生箭头贴着右边框，这里隐藏它、自己画一个，左右都缩进 12px（样式见 .setting-select）。
+function SettingSelect({
+  wrapperClassName,
+  className,
+  children,
+  ...props
+}: ComponentPropsWithoutRef<"select"> & { wrapperClassName?: string }) {
+  return (
+    <div className={clsx("setting-select", wrapperClassName)}>
+      <select
+        {...props}
+        className={clsx(
+          "surface-inset text-[13px] text-[var(--text-primary)] outline-none",
+          className,
+        )}
+      >
+        {children}
+      </select>
+      <ChevronDown size={14} className="setting-select-icon" aria-hidden />
+    </div>
+  );
+}
 
 const EMPTY_ASSIGNED_CLIENTS: string[] = [];
 const EMPTY_ADMIN_CLIENTS: NodeInfo[] = [];
@@ -1764,11 +1795,10 @@ export function ThemeManage() {
                     <div className="setting-subhead">
                       <span className="setting-subhead-title">默认分组</span>
                     </div>
-                    <select
+                    <SettingSelect
                       value={draft.homeDefaultGroup}
                       onChange={(event) => patch("homeDefaultGroup", event.target.value)}
                       aria-label="默认分组"
-                      className="surface-inset setting-control px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
                     >
                       <option value="">全部（不指定）</option>
                       {/* 站点换过分组名时，存着的那个值仍列出来，免得选中项凭空消失。 */}
@@ -1783,7 +1813,7 @@ export function ThemeManage() {
                           {group}
                         </option>
                       ))}
-                    </select>
+                    </SettingSelect>
                   </div>
                 </div>
 
@@ -2199,13 +2229,13 @@ export function ThemeManage() {
                                 线路 {slot + 1}
                               </label>
                               <div className="flex items-center gap-1.5">
-                                <select
+                                <SettingSelect
                                   id={`multi-ping-slot-${slot}`}
                                   value={selectedTaskId}
                                   onChange={(event) =>
                                     patchMultiPingTask(slot, event.target.value)
                                   }
-                                  className="surface-inset min-w-0 flex-1 px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
+                                  wrapperClassName="flex-1"
                                 >
                                   {!sortedTasks.some((task) => task.id === selectedTaskId) && (
                                     <option value={selectedTaskId}>
@@ -2223,7 +2253,7 @@ export function ThemeManage() {
                                       </option>
                                     );
                                   })}
-                                </select>
+                                </SettingSelect>
                                 <button
                                   type="button"
                                   onClick={() => removeMultiPingTask(slot)}
@@ -2233,7 +2263,7 @@ export function ThemeManage() {
                                   }
                                   aria-label={`移除线路 ${slot + 1}`}
                                   title="移除这条线路"
-                                  className="surface-inset flex h-[34px] w-[34px] shrink-0 items-center justify-center text-[var(--text-tertiary)] transition-colors hover:border-[var(--status-error)] hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-[var(--hairline)] disabled:hover:text-[var(--text-tertiary)]"
+                                  className="surface-inset flex h-[38px] w-[38px] shrink-0 items-center justify-center text-[var(--text-tertiary)] transition-colors hover:border-[var(--status-error)] hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-[var(--hairline)] disabled:hover:text-[var(--text-tertiary)]"
                                 >
                                   <X size={14} />
                                 </button>

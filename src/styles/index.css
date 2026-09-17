@@ -75,18 +75,24 @@ html {
   box-sizing: border-box;
 }
 
-button {
-  font: inherit;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  padding: 0;
-}
+/* 元素重置必须进 base 层：写在层外的话，层外样式一律压过 Tailwind 工具类（与选择器权重无关），
+   <button> 上写的 px-3 / text-[12px] / text-[var(--…)] 全部静默失效 —— 设置页「添加线路」
+   字号成了 16px、内边距 0 顶着边框，两个出错页的「重试」和线路旁的 × 同样中招（2026-09-17）。
+   自定义类（.control-button、.theme-manage-button…）本来就在层外，照样压得过这里。 */
+@layer base {
+  button {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    padding: 0;
+  }
 
-a {
-  color: inherit;
-  text-decoration: none;
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
 input,

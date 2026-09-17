@@ -908,6 +908,33 @@ body::after {
   width: 100%;
 }
 
+/* 设置页的下拉框自己画箭头：原生箭头离右边框只有几像素，左边文字却缩进 12px，一边宽一边窄。
+   两边都留 12px，箭头那侧再让出图标的位置，长选项名截断时不会压到箭头上。 */
+.setting-select {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.setting-select > select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 34px 8px 12px;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+.setting-select-icon {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  color: var(--text-secondary);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
 .setting-hint {
   color: var(--text-tertiary);
   font-size: 11px;
