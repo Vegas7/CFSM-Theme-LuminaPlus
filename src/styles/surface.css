@@ -859,6 +859,43 @@ body::after {
   white-space: nowrap;
 }
 
+.instance-segmented button svg {
+  flex-shrink: 0;
+}
+
+/* 四五个选项一行平分，格子一窄（手机，或平板上「桌面端 / 移动端」两张卡并排）每个只剩 60px 上下，
+   「实时网速」这种四个字就顶出去、图标被压成点。按格子自己的宽度判断，不按视口：同一个视口宽度下
+   独占一行的控件放得下，半格宽的放不下。窄了就改成网格换行，四个排 2×2，五个排 3+2
+   （六列网格，前三个各占两列、后两个各占三列），每行都铺满。放控件的那层加 `.setting-segment-slot`。
+   430px：四个带图标的选项（「迷你卡片」最宽，内容 72px + 两侧 8px + 描边）刚好并排放下的卡片宽度约 414px，再留点余量。 */
+.setting-segment-slot {
+  container: setting-segment / inline-size;
+  min-width: 0;
+}
+
+@container setting-segment (max-width: 430px) {
+  .instance-segmented.is-prominent.is-even button {
+    padding: 0 4px;
+  }
+
+  .instance-segmented.is-even:has(> button:nth-child(4)) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .instance-segmented.is-even:has(> button:nth-child(5):last-child) {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .instance-segmented.is-even:has(> button:nth-child(5):last-child) > button {
+    grid-column: span 2;
+  }
+
+  .instance-segmented.is-even:has(> button:nth-child(5):last-child) > button:nth-child(n + 4) {
+    grid-column: span 3;
+  }
+}
+
 /* 选项多的字段（默认排序维度有 5 个）独占一行，剩下的三项并排，高度才齐。 */
 @media (min-width: 960px) {
   .setting-grid.is-triple {

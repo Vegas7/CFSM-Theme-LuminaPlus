@@ -1500,7 +1500,7 @@ export function ThemeManage() {
                 title="默认外观"
                 aside={<LayoutTemplate size={16} />}
               >
-                <div className="instance-segmented is-scrollable">
+                <div className="instance-segmented is-prominent is-even">
                   {APPEARANCE_OPTIONS.map(({ value, label, icon: Icon }) => (
                     <button
                       key={value}
@@ -1524,7 +1524,7 @@ export function ThemeManage() {
                 aside={<LayoutGrid size={16} />}
               >
                 <div className="grid gap-4 md:grid-cols-2">
-                  <div className="surface-inset flex flex-col gap-3 px-4 py-4">
+                  <div className="surface-inset setting-segment-slot flex flex-col gap-3 px-4 py-4">
                     <div>
                       <div className="setting-subhead-title">
                         桌面端默认
@@ -1533,7 +1533,7 @@ export function ThemeManage() {
                         适用于宽度大于 720px 的浏览器窗口。
                       </div>
                     </div>
-                    <div className="instance-segmented is-scrollable">
+                    <div className="instance-segmented is-prominent is-even">
                       {NODE_VIEW_MODE_OPTIONS.map(({ value, label, icon: Icon }) => (
                         <button
                           key={value}
@@ -1549,7 +1549,7 @@ export function ThemeManage() {
                       ))}
                     </div>
                   </div>
-                  <div className="surface-inset flex flex-col gap-3 px-4 py-4">
+                  <div className="surface-inset setting-segment-slot flex flex-col gap-3 px-4 py-4">
                     <div>
                       <div className="setting-subhead-title">
                         移动端默认
@@ -1558,7 +1558,7 @@ export function ThemeManage() {
                         适用于宽度小于等于 720px 的手机或窄屏窗口。
                       </div>
                     </div>
-                    <div className="instance-segmented is-scrollable">
+                    <div className="instance-segmented is-prominent is-even">
                       {MOBILE_VIEW_MODE_OPTIONS.map(({ value, label, icon: Icon }) => (
                         <button
                           key={value}
@@ -1696,7 +1696,7 @@ export function ThemeManage() {
 
                 {/* 四个字段一套网格：标题在上、控件撑满格子。宽窄不一、说明乱飘是上一版「看着乱」的来源。 */}
                 <div className="setting-grid is-triple mt-4">
-                  <div className="is-wide">
+                  <div className="is-wide setting-segment-slot">
                     <div className="setting-subhead">
                       <span className="setting-subhead-title">默认排序维度</span>
                     </div>
