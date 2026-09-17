@@ -2242,13 +2242,15 @@ export function ThemeManage() {
                           ))}
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-3">
+                          {/* 用设置页统一的小按钮：原来写的 px-3 py-1.5 text-[12px] 这类 Tailwind 类在 <button> 上
+                              不生效（index.css 里没进 layer 的 button 重置压过工具类），字号成了 16px、内边距 0，字顶着边框。 */}
                           <button
                             type="button"
                             onClick={addMultiPingTask}
                             disabled={
                               draft.homepageMultiPingTaskIds.length >= multiPingSlotLimit
                             }
-                            className="surface-inset inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-500)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--hairline)]"
+                            className="theme-manage-button is-compact"
                           >
                             <Plus size={13} />
                             添加线路
