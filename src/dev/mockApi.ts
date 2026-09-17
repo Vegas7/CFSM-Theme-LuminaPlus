@@ -341,6 +341,18 @@ function buildHistory(serverId: string, hours: number) {
 /** 「保存到后端」写进来的站点主题配置，只存在内存里（刷新页面就没了），够本地走一遍发布流程。 */
 let mockThemeOptions: Record<string, unknown> = {};
 
+/**
+ * `?mock=1&turnstile=1`：模拟开了全局人机验证的站点。公钥用 Cloudflare 官方的测试公钥：`1` 总是通过，
+ * 走一遍「弹验证 → 拿一次性 token → 带着它请求 config 换凭证 → 数据接口放行」；`block` 总是不通过，
+ * 用来看「还没验证时」页面停在什么样、有没有偷偷请求数据。
+ * 和真后端一样：`/api/config` 不验证也放行（返回 `verified: false`），其余 `/api/*` 没凭证一律 403。
+ */
+const MOCK_TURNSTILE_MODE = new URLSearchParams(window.location.search).get("turnstile");
+const MOCK_TURNSTILE = MOCK_TURNSTILE_MODE === "1" || MOCK_TURNSTILE_MODE === "block";
+const MOCK_TURNSTILE_SITE_KEY =
+  MOCK_TURNSTILE_MODE === "block" ? "2x00000000000000000000AB" : "1x00000000000000000000AA";
+const MOCK_TURNSTILE_CREDENTIAL = "mock-turnstile-verified";
+
 export function installDevMockApi() {
   const nativeFetch = window.fetch.bind(window);
 
@@ -359,6 +371,27 @@ export function installDevMockApi() {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
+
+    // 本地验「什么时候发了哪些请求」：控制台读 window.__mockApiLog（形如 "403 /api/servers"）。
+    const log = ((window as unknown as { __mockApiLog?: string[] }).__mockApiLog ??= []);
+    const requestHeaders = new Headers(init?.headers);
+    const turnstilePassed =
+      requestHeaders.get("X-Turnstile-Verified") === MOCK_TURNSTILE_CREDENTIAL ||
+      Boolean(requestHeaders.get("X-Turnstile-Token"));
+    if (
+      MOCK_TURNSTILE &&
+      !turnstilePassed &&
+      url.pathname.startsWith("/api/") &&
+      url.pathname !== "/api/config"
+    ) {
+      log.push(`403 ${url.pathname}`);
+      return new Response(JSON.stringify({ error: "Turnstile verification failed", code: 403 }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (url.pathname.startsWith("/api/")) log.push(`200 ${url.pathname}`);
 
     if (url.pathname === "/api/theme_options" && init?.method?.toUpperCase() === "POST") {
       const body = JSON.parse(String(init.body ?? "{}")) as { theme_options?: unknown };
@@ -384,14 +417,14 @@ export function installDevMockApi() {
         authorization: loggedIn,
         preferred_theme: "auto",
         frontend_ws_timeout_minutes: 0,
-        turnstile_enabled: false,
+        turnstile_enabled: MOCK_TURNSTILE,
         turnstile_login_enabled: false,
-        turnstile_site_key: "",
+        turnstile_site_key: MOCK_TURNSTILE ? MOCK_TURNSTILE_SITE_KEY : "",
         site_title: "Mock Monitor",
         display_mode: "bar",
         theme_options: mockThemeOptions,
-        verified: false,
-        turnstile_verified: null,
+        verified: MOCK_TURNSTILE && turnstilePassed,
+        turnstile_verified: MOCK_TURNSTILE && turnstilePassed ? MOCK_TURNSTILE_CREDENTIAL : null,
         long_history_points: 120,
         // 站长自定义的线路名（后端后加）。这里故意只改两条 + 留一条空串，
         // 用来验「逐条回退到默认名」：cm 应该还显示「移动」。

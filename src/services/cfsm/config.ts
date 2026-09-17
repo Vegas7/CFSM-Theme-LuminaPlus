@@ -147,10 +147,31 @@ export function getTurnstileVerified(): string {
   return readStorage(TURNSTILE_VERIFIED_KEY);
 }
 
+const turnstileVerifiedListeners = new Set<() => void>();
+
+/**
+ * 缓存的验证凭证变了（验证通过拿到新凭证、或被后端拒掉清空）就通知。界面据此决定数据页挂不挂
+ * （见 useTurnstileVerificationRequired）：凭证是读 localStorage 的，不订阅的话只能等 `/api/config`
+ * 重新拉回来、数据变了才重渲 —— 后端下发的 config 前后一样时，验证过了页面也不会出来。
+ */
+export function subscribeTurnstileVerified(listener: () => void): () => void {
+  turnstileVerifiedListeners.add(listener);
+  return () => {
+    turnstileVerifiedListeners.delete(listener);
+  };
+}
+
+function emitTurnstileVerifiedChange(): void {
+  for (const listener of [...turnstileVerifiedListeners]) listener();
+}
+
 /** 一次成功验证的凭证有效期约 1 小时，缓存后可省掉重复的人机验证。 */
 export function setTurnstileVerified(value: string): void {
+  const changed = value !== getTurnstileVerified();
   writeStorage(TURNSTILE_VERIFIED_KEY, value);
   if (value) writeStorage(TURNSTILE_TOKEN_KEY, "");
+  // 每个带凭证的响应都会回写一遍，没变就不惊动订阅方。
+  if (changed) emitTurnstileVerifiedChange();
 }
 
 const turnstileClearedListeners = new Set<() => void>();
@@ -168,10 +189,12 @@ export function subscribeTurnstileCredentialsCleared(listener: () => void): () =
 }
 
 export function clearTurnstileCredentials(): void {
-  const hadCredentials = Boolean(getTurnstileToken() || getTurnstileVerified());
+  const hadVerified = Boolean(getTurnstileVerified());
+  const hadCredentials = Boolean(getTurnstileToken() || hadVerified);
   writeStorage(TURNSTILE_TOKEN_KEY, "");
   writeStorage(TURNSTILE_VERIFIED_KEY, "");
   // 真清掉了东西才通知：凭证已经没了之后，轮询每次 403 都再拉一遍 config 是白打请求。
   if (!hadCredentials) return;
+  if (hadVerified) emitTurnstileVerifiedChange();
   for (const listener of [...turnstileClearedListeners]) listener();
 }

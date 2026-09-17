@@ -10,6 +10,7 @@ import { useAppearance } from "@/hooks/useAppearance";
 import { useAuth } from "@/hooks/useAuth";
 import { usePublicConfig } from "@/hooks/usePublicConfig";
 import { useSiteMetadata } from "@/hooks/useSiteMetadata";
+import { useTurnstileVerificationRequired } from "@/hooks/useTurnstileVerification";
 import { useMetricColorsSync } from "@/hooks/useMetricColors";
 import { useNodeStoreStatus } from "@/hooks/useNode";
 import { getAdminUrl } from "@/services/cfsm/config";
@@ -21,6 +22,7 @@ export function AppShell() {
   const { pathname, search } = useLocation();
   const publicConfig = usePublicConfig();
   const auth = useAuth();
+  const needsVerification = useTurnstileVerificationRequired();
   const normalizedPath = (pathname.replace(/\/+$/, "") || "/").toLowerCase();
   const isDataRoute =
     normalizedPath === "/" ||
@@ -37,10 +39,19 @@ export function AppShell() {
     publicConfig.data?.private_site === true &&
     !auth.isPending &&
     auth.data?.logged_in !== true;
+  // 站点要人机验证、还没验证：数据页一个都不挂。挂上去节点 store 就去请求 `/api/servers`，没凭证被 403，
+  // 「节点数据暂时无法加载」露在验证弹窗后面；验证过了还得按失败退避干等下一次重试（线上实测间隔
+  // 10、15、25 秒往上涨，最长 80 秒）。不挂的话 store 根本不启动，验证一过页面挂上来就是一次全新的首屏同步。
+  // 用了一小时凭证过期、中途重新弹验证时同理：页面先卸掉（实时连接跟着断，弹窗挡着也看不见），过了再重新拉。
+  const awaitingVerification = isDataRoute && needsVerification;
   const isHomeDashboard =
     normalizedPath === "/" && new URLSearchParams(search).get("view") !== "theme-manage";
   const canHydrateHome =
-    isHomeDashboard && !isCheckingAccess && !accessError && !isPrivateVisitor;
+    isHomeDashboard &&
+    !isCheckingAccess &&
+    !accessError &&
+    !awaitingVerification &&
+    !isPrivateVisitor;
   const homeStoreStatus = useNodeStoreStatus(canHydrateHome);
   const isCheckingHomeData =
     canHydrateHome && !homeStoreStatus.hydrated && !homeStoreStatus.nodeInfoError;
@@ -57,6 +68,9 @@ export function AppShell() {
             </div>
           ) : accessError ? (
             <AccessError onRetry={() => void publicConfig.refetch()} />
+          ) : awaitingVerification ? (
+            // 验证弹窗是全屏遮罩，这里只占住高度，免得页脚顶上来。
+            <div className="min-h-[60vh]" aria-hidden />
           ) : isPrivateVisitor ? (
             <PrivateSiteGate />
           ) : (

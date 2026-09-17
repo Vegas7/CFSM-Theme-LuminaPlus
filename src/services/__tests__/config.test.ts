@@ -1,9 +1,17 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
-import { getStaticSiteTitle } from "@/services/cfsm/config";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  clearTurnstileCredentials,
+  getStaticSiteTitle,
+  getTurnstileVerified,
+  setTurnstileToken,
+  setTurnstileVerified,
+  subscribeTurnstileVerified,
+} from "@/services/cfsm/config";
 
 afterEach(() => {
   document.head.innerHTML = "";
+  window.localStorage.clear();
 });
 
 describe("getStaticSiteTitle", () => {
@@ -19,5 +27,39 @@ describe("getStaticSiteTitle", () => {
 
   it("is empty for Worker-hosted pages, so the backend site title applies", () => {
     expect(getStaticSiteTitle()).toBe("");
+  });
+});
+
+describe("subscribeTurnstileVerified（验证一通过数据页就挂上来）", () => {
+  it("notifies when verification yields a credential, and again when it gets rejected", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeTurnstileVerified(listener);
+
+    setTurnstileToken("one-time-token");
+    expect(listener).not.toHaveBeenCalled();
+
+    setTurnstileVerified("credential");
+    expect(getTurnstileVerified()).toBe("credential");
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    clearTurnstileCredentials();
+    expect(getTurnstileVerified()).toBe("");
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    unsubscribe();
+  });
+
+  it("stays quiet when a response merely echoes the same credential, or there was nothing to clear", () => {
+    setTurnstileVerified("credential");
+    const listener = vi.fn();
+    const unsubscribe = subscribeTurnstileVerified(listener);
+
+    // 每个带凭证的响应都会回写一遍。
+    setTurnstileVerified("credential");
+    clearTurnstileCredentials();
+    clearTurnstileCredentials();
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
   });
 });

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Spinner } from "@/components/ui/Spinner";
 import { usePublicConfig } from "@/hooks/usePublicConfig";
+import { useTurnstileVerificationRequired } from "@/hooks/useTurnstileVerification";
 import { getSiteConfig } from "@/services/api";
 import {
   getTurnstileVerified,
@@ -77,12 +78,8 @@ export function TurnstileGate() {
     [queryClient],
   );
 
-  // 已经拿到缓存凭证或本次请求已通过验证时不打扰用户。
-  const needsVerification =
-    config?.turnstile_enabled === true &&
-    config.verified !== true &&
-    !getTurnstileVerified() &&
-    Boolean(config.turnstile_site_key);
+  // 已经拿到缓存凭证或本次请求已通过验证时不打扰用户。AppShell 用同一个口径决定数据页挂不挂。
+  const needsVerification = useTurnstileVerificationRequired();
 
   const submitToken = useCallback(
     async (token: string) => {
