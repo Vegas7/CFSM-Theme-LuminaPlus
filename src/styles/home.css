@@ -811,6 +811,8 @@
 }
 
 .home-region-chips {
+  /* 标签的 offsetLeft / offsetTop 以这里为准：拖动时按它把标签贴到指针下（RegionTabs）。 */
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -842,6 +844,29 @@
 .home-region-chip:hover {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--hover-bg-a) 72%, transparent);
+}
+
+/* 地区标签可以拖动排序：长按不要弹系统菜单、不要选中文字。 */
+.home-region-chip {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.home-region-chips[data-reordering="true"],
+.home-region-chips[data-reordering="true"] .home-region-chip {
+  cursor: grabbing;
+}
+
+/* 拖动中的标签浮在别的标签上面，底色不透明，免得和下面的字叠在一起。 */
+.home-region-chip[data-dragging="true"] {
+  position: relative;
+  z-index: 2;
+  border-color: color-mix(in srgb, var(--border-strong) 70%, transparent);
+  background: var(--surface-elev);
+  color: var(--text-primary);
+  box-shadow: 0 14px 28px -14px rgba(0, 0, 0, 0.45);
+  will-change: transform;
 }
 
 .home-region-chip-code {

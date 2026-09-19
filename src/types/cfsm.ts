@@ -483,6 +483,8 @@ export interface ThemeSettings {
   showRegionBar?: boolean;
   showCardGroup?: boolean;
   homeGroupOrder?: string[];
+  /** 首页地区栏的顺序（地区代码），在首页直接拖动得到；没列进去的按默认规则排在后面。 */
+  homeRegionOrder?: string[];
   enableHomeSort?: boolean;
   homeSortField?: "default" | "name" | "speed" | "traffic" | "price";
   homeSortDirection?: "asc" | "desc";

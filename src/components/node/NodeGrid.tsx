@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CircleDollarSign } from "lucide-react";
-import { Flag } from "@/components/ui/Flag";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useAllNodeMeta,
@@ -28,8 +27,8 @@ import {
   getHomeRegionOptions,
   HOME_ALL_GROUP,
   HOME_ALL_REGION,
+  mergeHomeRegionOrder,
   sortHomeGroupOptions,
-  type HomeRegionOption,
 } from "@/utils/homeNodes";
 import { getDisplayRegionCode } from "@/utils/geo";
 import { useHomeSort } from "@/hooks/useHomeSort";
@@ -37,6 +36,7 @@ import { useHomeNodeOrder } from "@/hooks/useHomeNodeOrder";
 import { useHourlyClock } from "@/hooks/useClock";
 import { usePacedRate } from "@/hooks/usePacedRate";
 import { preloadAssetsPage } from "@/services/assetsPageLoader";
+import { getLocalThemeSettings, saveLocalThemeSettings } from "@/services/themeSettingsStore";
 import { HomeSortControl } from "./HomeSortControl";
 import {
   getOverviewRating,
@@ -46,6 +46,7 @@ import { CompactNodeCard } from "./CompactNodeCard";
 import { MiniNodeCard } from "./MiniNodeCard";
 import { NodeCard } from "./NodeCard";
 import { NodeListView } from "./NodeListView";
+import { RegionTabs } from "./RegionTabs";
 import { RenewalReminder } from "./RenewalReminder";
 import type { NodeViewMode } from "@/utils/themeSettings";
 import type { RenewalReminderSource } from "@/utils/renewalReminder";
@@ -65,6 +66,7 @@ type MiniGridStyle = CSSProperties & { "--mini-card-min-width": string };
 const UUID_KEY_SEPARATOR = ",";
 /** 汇率接口失败时的占位，保持引用稳定，让 useMemo 不会每次渲染都重算。 */
 const EMPTY_RATES: Record<string, number> = {};
+const EMPTY_REGION_ORDER: string[] = [];
 
 type IdleCapableWindow = Window & {
   requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
@@ -316,43 +318,6 @@ function GroupTabs({
   );
 }
 
-// 地区筛选栏:按国旗聚合节点,点击某地区只看该地区;再点一次(或点已选中项)回到全部。
-// 与分组栏是两条独立筛选,可叠加(先分组、后地区)。
-function RegionTabs({
-  regions,
-  selectedRegion,
-  onSelectRegion,
-}: {
-  regions: HomeRegionOption[];
-  selectedRegion: string;
-  onSelectRegion: (region: string) => void;
-}) {
-  return (
-    <section className="home-region-bar" aria-label="地区筛选">
-      <div className="home-region-chips" role="group">
-        {regions.map(({ code, count }) => {
-          const active = selectedRegion === code;
-          return (
-            <button
-              key={code}
-              type="button"
-              className="home-region-chip"
-              data-active={active ? "true" : "false"}
-              aria-pressed={active}
-              onClick={() => onSelectRegion(active ? HOME_ALL_REGION : code)}
-              title={code}
-            >
-              <Flag region={code} size={14} />
-              <span className="home-region-chip-code">{code}</span>
-              <span className="home-region-chip-count">{count}</span>
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
 export function NodeGrid() {
   const now = useHourlyClock();
   const nodes = useHomeNodeSummaries();
@@ -530,9 +495,25 @@ export function NodeGrid() {
     [visibleNodes, selectedGroup],
   );
   // 地区选项在分组筛选之后统计,让国旗计数反映当前分组内的分布。
+  const homeRegionOrder = themeSettings.isReady ? themeSettings.homeRegionOrder : EMPTY_REGION_ORDER;
   const regionOptions = useMemo(
-    () => getHomeRegionOptions(groupFilteredNodes),
-    [groupFilteredNodes],
+    () => getHomeRegionOptions(groupFilteredNodes, homeRegionOrder),
+    [groupFilteredNodes, homeRegionOrder],
+  );
+  // 地区栏上拖完的顺序直接写本机设置：访客只影响自己；登录站长跟别的设置一样自动同步到后端。
+  // 当前分组只显示一部分地区，要并回完整顺序，别的分组里排好的不能丢（见 mergeHomeRegionOrder）。
+  const handleRegionReorder = useCallback(
+    (visibleAfter: string[]) => {
+      saveLocalThemeSettings({
+        ...getLocalThemeSettings(),
+        homeRegionOrder: mergeHomeRegionOrder(
+          homeRegionOrder,
+          regionOptions.map((option) => option.code),
+          visibleAfter,
+        ),
+      });
+    },
+    [homeRegionOrder, regionOptions],
   );
   const filteredNodes = useMemo(
     () =>
@@ -732,6 +713,7 @@ export function NodeGrid() {
           regions={regionOptions}
           selectedRegion={selectedRegion}
           onSelectRegion={setSelectedRegion}
+          onReorder={handleRegionReorder}
         />
       )}
       {isList ? <NodeListView uuids={orderedUuids} /> : gridElement}

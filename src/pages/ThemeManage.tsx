@@ -85,6 +85,7 @@ import { MAX_RENEWAL_REMINDER_DAYS } from "@/utils/renewalReminder";
 import {
   dedupeGroupLabels,
   normalizeHomeGroupOrder,
+  normalizeHomeRegionOrder,
   sortHomeGroupOptions,
 } from "@/utils/homeNodes";
 import {
@@ -296,6 +297,7 @@ function pickManagedThemeSettings(settings: ResolvedThemeSettings) {
     showCardGroup: settings.showCardGroup,
     showCardPrice: settings.showCardPrice,
     homeGroupOrder: settings.homeGroupOrder,
+    homeRegionOrder: settings.homeRegionOrder,
     homeDefaultGroup: settings.homeDefaultGroup,
     enableHomeSort: settings.enableHomeSort,
     homeSortField: settings.homeSortField,
@@ -1229,6 +1231,7 @@ export function ThemeManage() {
       ...rest,
       homepagePingBindings: pruneBindings(rest.homepagePingBindings),
       homeGroupOrder: normalizeHomeGroupOrder(rest.homeGroupOrder),
+      homeRegionOrder: normalizeHomeRegionOrder(rest.homeRegionOrder),
       trafficRatingLabels: ratingLabels.traffic,
       bandwidthRatingLabels: ratingLabels.bandwidth,
       assetRatingLabels: ratingLabels.asset,
@@ -1874,6 +1877,34 @@ export function ThemeManage() {
                       ))}
                     </ul>
                   )}
+                </div>
+
+                {/* 地区顺序在首页地区栏上直接拖（站长提的：拖比在这里上下点直观）；这里只留查看和恢复默认。 */}
+                <div className="mt-4">
+                  <div className="setting-subhead">
+                    <span className="setting-subhead-title">地区排序</span>
+                    <span className="setting-hint">
+                      在首页按住地区标签直接拖动（手机上先长按）；新出现的地区按默认规则排在后面。
+                    </span>
+                  </div>
+                  <div className="surface-inset mt-2 flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span
+                      className="truncate text-[13px] text-[var(--text-primary)]"
+                      title={draft.homeRegionOrder.join(" → ")}
+                    >
+                      {draft.homeRegionOrder.length > 0
+                        ? draft.homeRegionOrder.join(" → ")
+                        : "默认：中国大陆、港澳台、新加坡、日本、美国、欧洲、其他"}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={draft.homeRegionOrder.length === 0}
+                      onClick={() => patch("homeRegionOrder", [])}
+                      className="theme-manage-button is-compact shrink-0"
+                    >
+                      恢复默认
+                    </button>
+                  </div>
                 </div>
 
               </InstancePanel>

@@ -12,7 +12,7 @@ import {
   DEFAULT_RENEWAL_REMINDER_DAYS,
   MAX_RENEWAL_REMINDER_DAYS,
 } from "@/utils/renewalReminder";
-import { normalizeHomeGroupOrder } from "@/utils/homeNodes";
+import { normalizeHomeGroupOrder, normalizeHomeRegionOrder } from "@/utils/homeNodes";
 import {
   HOME_SORT_NATURAL_DIRECTION,
   isHomeSortDirection,
@@ -56,6 +56,8 @@ export interface ResolvedThemeSettings {
   showCardGroup: boolean;
   showCardPrice: boolean;
   homeGroupOrder: string[];
+  /** 地区栏顺序：在首页拖动地区标签得到（见 mergeHomeRegionOrder）。空 = 按默认地理优先级。 */
+  homeRegionOrder: string[];
   /** 首页默认选中的分组（空 = 全部）。后端没有这个分组时回退到全部。 */
   homeDefaultGroup: string;
   enableHomeSort: boolean;
@@ -102,6 +104,7 @@ export const DEFAULT_THEME_SETTINGS: ResolvedThemeSettings = {
   showCardGroup: true,
   showCardPrice: true,
   homeGroupOrder: [],
+  homeRegionOrder: [],
   homeDefaultGroup: "",
   enableHomeSort: true,
   homeSortField: "default",
@@ -259,6 +262,7 @@ export function normalizeThemeSettings(
     showCardGroup: enabledUnlessFalse(settings?.showCardGroup),
     showCardPrice: enabledUnlessFalse(settings?.showCardPrice),
     homeGroupOrder: normalizeHomeGroupOrder(settings?.homeGroupOrder),
+    homeRegionOrder: normalizeHomeRegionOrder(settings?.homeRegionOrder),
     homeDefaultGroup: normalizeHomeDefaultGroup(settings?.homeDefaultGroup),
     enableHomeSort: enabledUnlessFalse(settings?.enableHomeSort),
     ...normalizeHomeSortDefault(settings?.homeSortField, settings?.homeSortDirection),

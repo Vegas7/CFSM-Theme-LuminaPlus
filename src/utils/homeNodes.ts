@@ -32,21 +32,69 @@ function regionRank(code: string): number {
 }
 
 /**
- * 按展示地区代码聚合节点数,按固定地理优先级排序(见 REGION_PRIORITY):中国(大陆优先,含港澳台)
+ * 按展示地区代码聚合节点数。`order` 是在首页拖出来的顺序(见 {@link mergeHomeRegionOrder}),
+ * 列在里面的地区按它排在最前;其余按固定地理优先级(见 REGION_PRIORITY):中国(大陆优先,含港澳台)
  * → 新加坡 → 日本 → 美国 → 欧洲诸国 → 其余。同一档内(欧洲/其余)再按数量降序、代码升序。
  */
-export function getHomeRegionOptions(nodes: HomeNodeSummary[]): HomeRegionOption[] {
+export function getHomeRegionOptions(
+  nodes: HomeNodeSummary[],
+  order: readonly string[] = [],
+): HomeRegionOption[] {
   const counts = new Map<string, number>();
   for (const node of nodes) {
     const code = getDisplayRegionCode(node.region);
     counts.set(code, (counts.get(code) ?? 0) + 1);
   }
-  return Array.from(counts, ([code, count]) => ({ code, count })).sort(
-    (a, b) =>
+  const orderIndex = new Map(order.map((code, index) => [code, index]));
+  return Array.from(counts, ([code, count]) => ({ code, count })).sort((a, b) => {
+    const left = orderIndex.get(a.code);
+    const right = orderIndex.get(b.code);
+    if (left != null || right != null) {
+      if (left == null) return 1;
+      if (right == null) return -1;
+      return left - right;
+    }
+    return (
       regionRank(a.code) - regionRank(b.code) ||
       b.count - a.count ||
-      a.code.localeCompare(b.code),
-  );
+      a.code.localeCompare(b.code)
+    );
+  });
+}
+
+/** 存下来的地区顺序:只收地区代码(大写字母/数字),去重,首次出现的优先。 */
+export function normalizeHomeRegionOrder(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const raw of value) {
+    if (typeof raw !== "string") continue;
+    const code = raw.trim().toUpperCase();
+    if (!/^[A-Z0-9]{2,8}$/.test(code) || seen.has(code)) continue;
+    seen.add(code);
+    result.push(code);
+    if (result.length >= 300) break;
+  }
+  return result;
+}
+
+/**
+ * 把一次拖动的结果并回完整的地区顺序。
+ *
+ * 地区栏只显示当前分组里有的地区,拖动也只拖得到这几个;直接拿「这次显示的顺序」当新顺序存,
+ * 别的分组里排好的地区就丢了。这里先还原出「所有已知地区」的实际显示顺序(存过的在前,这次显示、
+ * 没存过的按显示顺序接在后面),再把这次显示的那几个按拖完的顺序填回它们原来占的位置。
+ */
+export function mergeHomeRegionOrder(
+  previousOrder: readonly string[],
+  visibleBefore: readonly string[],
+  visibleAfter: readonly string[],
+): string[] {
+  const known = new Set(previousOrder);
+  const full = [...previousOrder, ...visibleBefore.filter((code) => !known.has(code))];
+  const visible = new Set(visibleBefore);
+  let cursor = 0;
+  return full.map((code) => (visible.has(code) ? (visibleAfter[cursor++] ?? code) : code));
 }
 
 export function getHomeGroupLabel(group: string) {
