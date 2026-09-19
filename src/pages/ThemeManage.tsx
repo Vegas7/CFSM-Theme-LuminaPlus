@@ -464,7 +464,12 @@ const TaskBindingSection = memo(function TaskBindingSection({
     updater: (prev: HomepagePingTaskBindings) => HomepagePingTaskBindings,
   ) => void;
 }) {
-  const assignedSummary = summarizeNodes(assigned, clientsById);
+  // 绑定里存的是节点 ID，节点删了 ID 还留着（站长 2026-09-19：5 台节点显示「11 台」，多出来的 6 个
+  // 全是删掉的节点、还只能显示成 ID）。台数和名单只算节点表里还在的；节点表没加载出来时先照存的显示。
+  // 存的数据不动：访客的节点表里没有隐藏节点，按它删会把隐藏节点的绑定一起删掉。
+  const existingAssigned =
+    clientsById.size > 0 ? assigned.filter((uuid) => clientsById.has(uuid)) : assigned;
+  const assignedSummary = summarizeNodes(existingAssigned, clientsById);
   // 探测线路是后端固定的，没绑定的节点会落到站长选的「默认线路」，这里标出来免得站长
   // 以为「0 个节点」就是没人用它。
   const isDefaultTask = task.id === defaultTaskId;
@@ -494,8 +499,8 @@ const TaskBindingSection = memo(function TaskBindingSection({
           </div>
           <div className="mt-2 text-[12px] text-[var(--text-secondary)]">
             <span className="font-medium text-[var(--text-primary)]">
-              {assigned.length > 0
-                ? `${assigned.length} 台节点在首页显示这条线路的延迟`
+              {existingAssigned.length > 0
+                ? `${existingAssigned.length} 台节点在首页显示这条线路的延迟`
                 : "还没有节点选这条线路"}
             </span>
             {isDefaultTask && (
@@ -529,7 +534,7 @@ const TaskBindingSection = memo(function TaskBindingSection({
               {allVisibleSelectableAssigned ? "已全选可用" : "全选可用"}
             </button>
           )}
-          {assigned.length > 0 && (
+          {existingAssigned.length > 0 && (
             <button
               type="button"
               onClick={() => {
@@ -1270,15 +1275,6 @@ export function ThemeManage() {
     seedDrafts(sourceThemeSettings);
   }, [config, isDirty, sourceSignature, sourceThemeSettings, seedDrafts]);
 
-  const assignedNodeCount = useMemo(
-    () =>
-      Object.values(draft.homepagePingBindings).reduce(
-        (total, clients) => total + clients.length,
-        0,
-      ),
-    [draft.homepagePingBindings],
-  );
-
   // 每个 client 归属哪个 task 的反查,只在绑定草稿变化时重建。与「全选可用」reducer
   // 共用 invertBindings() 避免推导漂移,并把可选节点过滤保持在 O(tasks × clients),
   // 而不是每个 client 都重扫一遍 bindings。
@@ -1286,6 +1282,17 @@ export function ThemeManage() {
     () => invertBindings(draft.homepagePingBindings),
     [draft.homepagePingBindings],
   );
+
+  // 「已单独指定 N / 共几台」：只数节点表里还在的。绑定里留着删掉的节点 ID，直接加总会出现
+  // 「11 / 5 台」（见 TaskBindingSection 的 existingAssigned）。
+  const assignedNodeCount = useMemo(() => {
+    if (clientsById.size === 0) return assignedTaskByClientUuid.size;
+    let count = 0;
+    for (const uuid of assignedTaskByClientUuid.keys()) {
+      if (clientsById.has(uuid)) count += 1;
+    }
+    return count;
+  }, [assignedTaskByClientUuid, clientsById]);
 
   /**
    * 自动保存：表单一停手就把草稿存进本机；登录站长那边自动同步随即把它发到后端
