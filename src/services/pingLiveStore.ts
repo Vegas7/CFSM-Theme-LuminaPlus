@@ -357,7 +357,11 @@ function mergeWindowWithLocal(
   if (local.length === 0) return assignWeights(window, resolveWindowStepMs(window), now);
 
   const step = resolveWindowStepMs(window);
-  const cadence = resolveCadenceMs(local);
+  // 疏密封顶在心跳间隔：页面开着时本地至少每 {@link MIN_SAMPLE_GAP_MS} 记一个，比这还疏的间隔
+  // 不是「连续实测」。不封顶的话，刚打开页面时本机只有「上次会话留下的一个 + 这次的一个」，
+  // 中位数就是两次打开之间那一大段，整段窗口点都被当成「本地覆盖到了」扔掉，柱子只剩首尾两格
+  // （2026-09-19 站长面板复现）。详情页看 7 天图回灌的稀疏历史行同理。
+  const cadence = Math.min(resolveCadenceMs(local), MIN_SAMPLE_GAP_MS);
   // 一段本地样本之间隔得比这还远，就当中间断了（标签页被挂起、或刚打开页面），
   // 那段仍旧交给窗口。取 cadence 的两倍，偶尔慢一拍不算断。
   const maxLocalGap = Math.max(step, cadence * 2);

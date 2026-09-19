@@ -410,6 +410,53 @@ describe("seedPingHistory", () => {
   });
 });
 
+describe("本地样本稀疏时不能挤掉窗口", () => {
+  const TWO_HOURS = 2 * 60 * 60_000;
+
+  /** 线上那种窗口：20 格、6 分钟一格，最新一格比 now 早几分钟。 */
+  function twoHourWindow(): PingLiveSample[] {
+    return Array.from({ length: 20 }, (_, index) => ({
+      time: NOW - 7 * 60_000 - (19 - index) * 6 * 60_000,
+      ping: ping({ cu: 30 + (index % 5), lossCu: 0 }),
+    }));
+  }
+
+  function barShape(): string {
+    const item = buildPingOverviewItem("node-a", 2, getPingHistorySnapshot("node-a"));
+    return buildPingBuckets(item, 20, NOW, null, TWO_HOURS)
+      .map((bucket) => (bucket.value == null ? "·" : "█"))
+      .join("");
+  }
+
+  it("刚打开页面、本机只有上次会话留下的一个样本时，柱子照样铺满", () => {
+    // 2026-09-19 站长面板：窗口 20/20 完整，本机样本 2 个，柱子只剩首尾两格。
+    // 两个样本的中位间隔就是两次打开之间那一大段，窗口点全被当成「本地覆盖到了」。
+    recordPingSample("node-a", NOW - 100 * 60_000, ping({ cu: 33, lossCu: 0 }));
+    vi.advanceTimersByTime(20_000);
+    resetPingLiveStore();
+    vi.setSystemTime(NOW);
+
+    seedPingHistory("node-a", twoHourWindow());
+    recordPingSample("node-a", NOW - 1_000, ping({ cu: 34, lossCu: 0 }));
+
+    expect(barShape()).toBe("█".repeat(20));
+  });
+
+  it("详情页看长区间回灌的稀疏历史行，不会把中间的窗口点挤掉", () => {
+    // 7 天图约 40 分钟一行：这几行之间不是连续实测，窗口点得留着。
+    seedPingHistory("node-a", twoHourWindow());
+    seedMeasuredHistory(
+      "node-a",
+      [NOW - 110 * 60_000, NOW - 70 * 60_000, NOW - 30 * 60_000].map((time) => ({
+        time,
+        ping: ping({ cu: 40, lossCu: 0 }),
+      })),
+    );
+
+    expect(barShape()).toBe("█".repeat(20));
+  });
+});
+
 describe("seedMeasuredHistory", () => {
   function backendWindowFilled(): PingLiveSample[] {
     // 线上那种「向后填充」的窗口：整段同一个值、丢包全 0。
