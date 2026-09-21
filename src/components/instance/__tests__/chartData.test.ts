@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendLiveChartPoint,
   cutPeakValues,
   downsampleAligned,
   fillMissingMetricPoints,
   insertMetricGapSentinels,
+  mergeHistoryWithLivePoints,
   type TimedMetricPoint,
 } from "@/components/instance/chartData";
 
@@ -258,5 +260,54 @@ describe("downsampleAligned", () => {
     const out = downsampleAligned([0, 10, 20, 30], [[50, null, 14, 16]], 2, true);
     expect(out.perTask[0][0]).toBeNull(); // 桶内有丢包 → 断点优先，不被尖峰逻辑覆盖
     expect(out.perTask[0][1]).toBe(15);
+  });
+});
+
+describe("历史图接实时样本", () => {
+  const point = (time: number, v: number): TimedMetricPoint => ({ time, v });
+
+  it("同一秒的重复样本不重复记", () => {
+    const first = appendLiveChartPoint([point(100, 1)], point(100.4, 2));
+    expect(first).toHaveLength(1);
+    expect(first[0]!.v).toBe(1);
+  });
+
+  it("实时档超上限砍最老的", () => {
+    let points: TimedMetricPoint[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      points = appendLiveChartPoint(points, point(i * 2, i), { dense: true, limit: 5 });
+    }
+    expect(points).toHaveLength(5);
+    expect(points[0]!.time).toBe(14);
+  });
+
+  it("历史档超上限时抽稀老的那截，不在历史末尾留缝", () => {
+    // 2 秒一帧连看两小时（3600 条，远超上限）：抽稀之后最老的一条还在原地，
+    // 历史末尾和实时段之间不会被砍出一道缝。
+    let points: TimedMetricPoint[] = [];
+    for (let i = 0; i < 3600; i += 1) {
+      points = appendLiveChartPoint(points, point(i * 2, i));
+    }
+    expect(points.length).toBeLessThanOrEqual(900);
+    expect(points[0]!.time).toBe(0);
+    expect(points[points.length - 1]!.time).toBe(7198);
+    // 最近 5 分钟保持原密度，更早的按 30 秒一条。
+    const newest = points[points.length - 1]!.time;
+    const recent = points.filter((item) => item.time >= newest - 300);
+    expect(recent.length).toBeGreaterThan(140);
+  });
+
+  it("只接历史末尾之后的实时样本", () => {
+    const history = [point(0, 1), point(30, 2), point(60, 3)];
+    const live = [point(40, 9), point(60, 9), point(62, 4), point(64, 5)];
+    const merged = mergeHistoryWithLivePoints(history, live);
+    expect(merged.map((item) => item.time)).toEqual([0, 30, 60, 62, 64]);
+    // 历史覆盖到的时刻仍用历史的值。
+    expect(merged[2]!.v).toBe(3);
+  });
+
+  it("没有实时样本时原样返回历史", () => {
+    const history = [point(0, 1)];
+    expect(mergeHistoryWithLivePoints(history, [])).toBe(history);
   });
 });

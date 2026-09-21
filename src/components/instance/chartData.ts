@@ -504,3 +504,66 @@ export function smoothByCount(
     return out;
   });
 }
+
+/* ------------------------------------------------------------------ *
+ * 历史图接实时样本
+ * ------------------------------------------------------------------ */
+
+/** 实时样本缓冲区的上限条数。 */
+export const LIVE_TAIL_MAX_POINTS = 900;
+/** 抽稀时最近这段保持原密度（WS 一台节点约 2 秒一帧）。 */
+const LIVE_TAIL_DENSE_SECONDS = 300;
+/** 更老的那截按历史行的密度抽稀（历史约 30 秒一行）。 */
+const LIVE_TAIL_THIN_SECONDS = 30;
+
+/**
+ * 把一条实时样本接到缓冲区末尾。
+ *
+ * 同一秒内的重复样本直接丢（WS 偶尔补发同一个时间戳）。超过上限后两种档位取舍不同：
+ * - `dense`（详情页「实时」档）：只看最近一段，砍掉最老的就行。
+ * - 历史档（实时样本接在历史后面）：**不能砍最老的** —— 历史的末尾和实时段之间会留一道
+ *   越来越宽的缝，页面开得越久缝越宽。改成把较老的那截按历史行的密度抽稀，
+ *   抽完还超上限才砍最老的（30 秒一条、900 条 ≈ 7 小时）。
+ */
+export function appendLiveChartPoint<T extends TimedMetricPoint>(
+  points: readonly T[],
+  point: T,
+  options: { dense?: boolean; limit?: number } = {},
+): T[] {
+  const limit = options.limit ?? LIVE_TAIL_MAX_POINTS;
+  const last = points[points.length - 1];
+  if (last && Math.abs(last.time - point.time) < 1) return points as T[];
+
+  const next = [...points, point];
+  if (next.length <= limit) return next;
+  if (options.dense) return next.slice(-limit);
+
+  const newest = next[next.length - 1]!.time;
+  const denseFrom = newest - LIVE_TAIL_DENSE_SECONDS;
+  const thinned: T[] = [];
+  for (const candidate of next) {
+    if (candidate.time >= denseFrom) {
+      thinned.push(candidate);
+      continue;
+    }
+    const kept = thinned[thinned.length - 1];
+    if (!kept || candidate.time - kept.time >= LIVE_TAIL_THIN_SECONDS) thinned.push(candidate);
+  }
+  return thinned.length > limit ? thinned.slice(-limit) : thinned;
+}
+
+/**
+ * 历史图接实时样本：只接历史末尾之后的那些。
+ *
+ * 历史那段仍以历史为准（后端的行是真采样，实时样本是推送的瞬时值，两者重叠时以历史为准，
+ * 免得同一时刻画出两个点）。
+ */
+export function mergeHistoryWithLivePoints<T extends TimedMetricPoint>(
+  history: readonly T[],
+  live: readonly T[],
+): T[] {
+  if (live.length === 0) return history as T[];
+  const lastHistoryTime = history[history.length - 1]?.time ?? Number.NEGATIVE_INFINITY;
+  const tail = live.filter((point) => point.time > lastHistoryTime);
+  return tail.length === 0 ? (history as T[]) : [...history, ...tail];
+}
