@@ -5,6 +5,10 @@ const RECORD_QUERY_OPTIONS = {
   staleTime: 300_000,
   refetchOnWindowFocus: false,
   refetchOnReconnect: false,
+  // 每次进详情页都重取一次：`staleTime` 5 分钟本来会让「刚点进来」直接用上次那份，
+  // 刚发生的事（站长 2026-09-21 跑的测速）要刷新页面才看得到，而内置主题是一进去就取。
+  // 不怕点来点去多发请求：`fetchHistoryRows` 自己还有 20 秒缓存，在途的同一请求也会复用。
+  refetchOnMount: "always",
 } as const;
 
 export function useLoadRecords(uuid: string, hours = 6, enabled = true) {
