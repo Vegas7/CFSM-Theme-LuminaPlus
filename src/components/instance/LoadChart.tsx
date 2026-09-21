@@ -55,6 +55,15 @@ const REALTIME_HISTORY_SEED_LIMIT = 60;
  */
 const REALTIME_WINDOW_SECONDS = 15 * 60;
 const REALTIME_SAMPLE_LIMIT = 600;
+/**
+ * 回到前台、且离开超过这么久就把历史重拉一次。
+ *
+ * 页面在后台满 30 秒会断开实时推送（见 wsStore 的后台暂停），这段时间的数据只在后端的历史里，
+ * 不补就是图上一个洞 —— 站长 2026-09-21 把面板切到后台去跑测速，回来后那一段峰值不在图上。
+ */
+const RESUME_REFETCH_HIDDEN_MS = 30_000;
+/** 兜底：在前台但这么久没收到实时样本（WS 掉了、实时连接到时限），同样重拉一次补上。 */
+const STALE_TAIL_REFETCH_MS = 5 * 60_000;
 
 const CPU_KEYS = ["cpu"];
 const CPU_COLORS = [CHART_PALETTE.cpu];
@@ -453,6 +462,8 @@ export function LoadChart({
   const meta = useNodeMeta(uuid);
   const { resolvedAppearance } = usePreferences();
   const [realtimePoints, setRealtimePoints] = useState<ChartPoint[]>([]);
+  /** 上一条实时样本的到达时刻，用来发现「断了一段」。 */
+  const lastSampleAtRef = useRef(0);
   const [connectNulls, setConnectNulls] = useState(false);
   const totalFallbacks = useMemo(
     () => ({
@@ -465,6 +476,11 @@ export function LoadChart({
 
   useEffect(() => {
     if (!active || !node) return;
+    const now = Date.now();
+    const sinceLast = lastSampleAtRef.current > 0 ? now - lastSampleAtRef.current : 0;
+    lastSampleAtRef.current = now;
+    // 断了很久才又收到样本：中间那段只有后端的历史里有，重拉一次把洞补上。
+    if (sinceLast >= STALE_TAIL_REFETCH_MS) void refetch();
     const point = pointFromNode(node);
     // 实时档只看最近一段，超上限砍最老的；历史档要一直接到历史末尾，超上限改为抽稀（见 appendLiveChartPoint）。
     setRealtimePoints((prev) =>
@@ -473,10 +489,28 @@ export function LoadChart({
         limit: isRealtime ? REALTIME_SAMPLE_LIMIT : undefined,
       }),
     );
-  }, [active, isRealtime, node]);
+  }, [active, isRealtime, node, refetch]);
+
+  // 回到前台补历史：后台那段时间实时推送是断的，只靠实时样本接不回来。
+  useEffect(() => {
+    if (!active) return;
+    let hiddenSince = document.hidden ? Date.now() : 0;
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        hiddenSince = Date.now();
+        return;
+      }
+      const awayMs = hiddenSince > 0 ? Date.now() - hiddenSince : 0;
+      hiddenSince = 0;
+      if (awayMs >= RESUME_REFETCH_HIDDEN_MS) void refetch();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [active, refetch]);
 
   useEffect(() => {
     setRealtimePoints([]);
+    lastSampleAtRef.current = 0;
   }, [hours, uuid]);
 
   const historyRecords = useMemo<Array<{ record: LoadRecord; time: number }>>(
