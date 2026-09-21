@@ -1825,8 +1825,7 @@ body::after {
   font-weight: 600;
 }
 
-.instance-chart-meta span,
-.instance-chart-range-chip {
+.instance-chart-meta span {
   display: inline-flex;
   min-height: 28px;
   align-items: center;
@@ -1837,13 +1836,12 @@ body::after {
   padding: 0 10px;
 }
 
-.instance-chart-meta strong,
-.instance-chart-range-chip {
+.instance-chart-meta strong {
   color: var(--text-primary);
   font-weight: 700;
 }
 
-/* 把覆盖/采样/断点连线/实时并入标题行右侧，省掉单独一行工具栏 */
+/* 把覆盖/采样/断点连线/刷新并入标题行右侧，省掉单独一行工具栏 */
 .instance-chart-headmeta {
   display: flex;
   flex-wrap: wrap;

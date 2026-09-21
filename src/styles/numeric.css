@@ -24,7 +24,6 @@
 .traffic-node-card-head > strong,
 .instance-series-stats,
 .instance-chart-meta strong,
-.instance-chart-range-chip,
 .instance-chart-tooltip-row strong {
   font-family: var(--font-numeric);
   font-variant-numeric: tabular-nums slashed-zero;
