@@ -545,11 +545,8 @@
   width: max-content;
   max-width: 156px;
   pointer-events: none;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--text-primary) 90%, black 10%);
-  box-shadow: 0 10px 18px -14px rgba(0, 0, 0, 0.55);
-  color: var(--surface);
-  padding: 4px 6px;
+  border-radius: 6px;
+  padding: 4px 7px;
   font-size: 10.5px;
   font-weight: 680;
   line-height: 1.15;
@@ -564,14 +561,36 @@
   position: absolute;
   top: 100%;
   left: 50%;
-  width: 6px;
-  height: 6px;
-  background: inherit;
-  transform: translate(-50%, -3px) rotate(45deg);
+  transform: translate(-50%, -4px) rotate(45deg);
 }
 
 /*
- * 小卡 / 迷你卡指标行的详情气泡（MetricDetailTip）：和延迟柱子的气泡同一套底色与字号，在上方弹。
+ * 卡片上的气泡（延迟柱子、指标数值）统一成主题里其它提示的那一套：浅底、细边框、正文色字
+ * （页脚版本号、详情页图表的提示都是这样）。原来是近黑底白字，站长 2026-09-21 觉得不好看；
+ * 两种气泡同一张卡上都会出现，只改一种会一黑一白。底色用不透明的 --surface，压在柱子上也看得清。
+ */
+.compact-node-health-tooltip,
+.node-health-hover-tooltip,
+.node-metric-tip {
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: 0 10px 24px -14px rgba(0, 0, 0, 0.45);
+}
+
+/* 小尖角：同底色的方块转 45°，只描右、下两条边，上半截压住气泡的下边框，看着像边框折出来的。 */
+.compact-node-health-tooltip::after,
+.node-health-hover-tooltip::after,
+.node-metric-tip::after {
+  width: 7px;
+  height: 7px;
+  border-right: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--surface);
+}
+
+/*
+ * 小卡 / 迷你卡指标行的详情气泡（MetricDetailTip）：和延迟柱子的气泡同一套样式，在上方弹。
  * 两张卡的指标都是两列网格：左列贴左边、右列贴右边弹出，气泡比格子宽也不会被卡片边缘裁掉。
  */
 .compact-node-gauge,
@@ -592,10 +611,7 @@
   width: max-content;
   max-width: 190px;
   pointer-events: none;
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--text-primary) 90%, black 10%);
-  box-shadow: 0 10px 18px -14px rgba(0, 0, 0, 0.55);
-  color: var(--surface);
+  border-radius: 6px;
   padding: 4px 7px;
   font-size: 11px;
   font-weight: 650;
@@ -610,10 +626,7 @@
   position: absolute;
   top: 100%;
   left: 14px;
-  width: 6px;
-  height: 6px;
-  background: inherit;
-  transform: translate(-50%, -3px) rotate(45deg);
+  transform: translate(-50%, -4px) rotate(45deg);
 }
 
 .compact-node-vitals > :nth-child(even) .node-metric-tip,
@@ -626,7 +639,7 @@
 .mini-node-vitals > :nth-child(even) .node-metric-tip::after {
   left: auto;
   right: 14px;
-  transform: translate(50%, -3px) rotate(45deg);
+  transform: translate(50%, -4px) rotate(45deg);
 }
 
 @keyframes node-metric-tip-in {
