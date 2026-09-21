@@ -280,6 +280,8 @@ function NodeMetricSection({
         icon={<Gauge size={13} strokeWidth={2} />}
         label="负载"
         valueText={node.load1.toFixed(2)}
+        // 1 / 5 / 15 分钟负载，和小卡 / 迷你卡气泡里同一个写法；原来这一行空着，和左边磁盘的「已用 / 总量」对不齐。
+        detailText={`${node.load1.toFixed(2)} / ${node.load5.toFixed(2)} / ${node.load15.toFixed(2)}`}
         fraction={loadFraction}
         redrawKey={redrawKey}
         paint="var(--progress-load)"
