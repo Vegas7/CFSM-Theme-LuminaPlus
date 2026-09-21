@@ -40,7 +40,20 @@ import type { LoadRecord, NodeMetrics } from "@/types/cfsm";
 
 const LOAD_HISTORY_SAMPLE_LIMIT = 360;
 const LOAD_HISTORY_RENDER_LIMIT = 720;
-const REALTIME_HISTORY_SEED_LIMIT = 120;
+/**
+ * 「实时」档查 10 分钟档历史打底（后端认的最短档位），不再查整整一小时。
+ *
+ * 每个档位都会把实时样本接在历史后面之后（v1.2.18），「实时」要是还拿一小时打底，
+ * 它和「1 小时」画出来就是同一张图（站长 2026-09-21：「这个实时和 1 小时都是 1 小时的数据」）。
+ */
+const REALTIME_QUERY_HOURS = 0.167;
+/** 打底的行数上限：10 分钟按 30 秒一行约 20 行，留点余量给上报更密的探针。 */
+const REALTIME_HISTORY_SEED_LIMIT = 60;
+/**
+ * 「实时」档最多显示这么长的一段。按**时间**卡而不是只按条数：探针 60 秒才报一次时，
+ * 600 条就是 10 小时，那又变回「长区间」了。
+ */
+const REALTIME_WINDOW_SECONDS = 15 * 60;
 const REALTIME_SAMPLE_LIMIT = 600;
 
 const CPU_KEYS = ["cpu"];
@@ -427,7 +440,7 @@ export function LoadChart({
   hours: number;
   active?: boolean;
 }) {
-  const queryHours = hours === 0 ? 1 : hours;
+  const queryHours = hours === 0 ? REALTIME_QUERY_HOURS : hours;
   const { data, isError, isFetching, isLoading, refetch } = useLoadRecords(
     uuid,
     queryHours,
@@ -500,13 +513,16 @@ export function LoadChart({
 
   const points = useMemo<ChartPoint[]>(() => {
     if (isRealtime) {
-      const initial = historyPoints.slice(-REALTIME_HISTORY_SEED_LIMIT);
-      const merged = [...initial, ...realtimePoints].sort((a, b) => a.time - b.time);
-      const deduped = merged.filter((point, index, arr) => {
-        const next = arr[index + 1];
-        return !next || Math.abs(next.time - point.time) >= 1;
-      });
-      return deduped.slice(-REALTIME_SAMPLE_LIMIT);
+      const seeded = mergeHistoryWithLivePoints(
+        historyPoints.slice(-REALTIME_HISTORY_SEED_LIMIT),
+        realtimePoints,
+      );
+      const newest = seeded[seeded.length - 1]?.time;
+      const windowed =
+        newest == null
+          ? seeded
+          : seeded.filter((point) => point.time >= newest - REALTIME_WINDOW_SECONDS);
+      return windowed.slice(-REALTIME_SAMPLE_LIMIT);
     }
     // 历史档：历史那段以历史为准，实时样本只接在它后面。
     return mergeHistoryWithLivePoints(historyPoints, realtimePoints);
