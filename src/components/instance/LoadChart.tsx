@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import UplotReact from "uplot-react";
-import type uPlot from "uplot";
+import uPlot from "uplot";
 import { ArrowDown, ArrowUp, Cpu, Gauge, HardDrive, MemoryStick, Network, RefreshCw, Workflow } from "lucide-react";
 import { useLoadRecords } from "@/hooks/useRecords";
 import { useNodeMeta, useNodeMetrics } from "@/hooks/useNode";
@@ -207,6 +207,14 @@ function formatCountAxisValue(value: number, min: number, max: number) {
   return `${Math.round(value)}`;
 }
 
+/**
+ * 负载图表用样条曲线，和后端内置主题一个观感（站长 2026-09-21 提的）。
+ *
+ * 样条在尖峰两侧会轻微过冲，非负指标（CPU/网速/连接数）因此可能画到 0 以下 ——
+ * uPlot 会把线裁在绘图区里，看着就是贴着底边，不会画出负值刻度。
+ */
+const SPLINE_PATHS = uPlot.paths.spline?.();
+
 // 不含尺寸的配置。width/height 由调用方在另一个 memo 里加上，resize 时只改这两个 key，
 // uplot-react 就会调 setSize() 而不是重建整个 chart。(用普通函数而非 hook——它不调任何
 // hook；之前的 `use` 前缀会触发 rules-of-hooks lint。)
@@ -279,6 +287,7 @@ function buildBaseOptions({
         // 会独占填充色，看起来像它才是主角。
         fill: fillAllSeries || index === 0 ? `${colors[index] ?? colors[0]}22` : undefined,
         width: 1.6,
+        paths: SPLINE_PATHS,
         spanGaps: spanGaps ?? false,
         points: { show: false },
       })),
