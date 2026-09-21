@@ -16,6 +16,7 @@ import { Flag } from "@/components/ui/Flag";
 import { OsLogo } from "@/components/ui/OsLogo";
 import { IpStackBadges } from "./IpStackBadges";
 import { HealthBucketTooltip } from "./HealthBucketTooltip";
+import { MetricDetailTip, useMetricDetailTip } from "./MetricDetailTip";
 import { resolveTouchBucketIndex, TOUCH_BUCKET_HOLD_MS } from "./touchBucketPick";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { HOMEPAGE_PING_BUCKET_COUNT } from "@/hooks/usePingOverview";
@@ -110,6 +111,7 @@ function MiniMetricBar({
   label,
   valueText,
   unit,
+  detail,
   fraction,
   paint,
 }: {
@@ -117,6 +119,8 @@ function MiniMetricBar({
   label: string;
   valueText: string;
   unit?: string;
+  /** 悬停 / 点一下弹出的具体数值（已用 / 总量、核数、1/5/15 分钟负载）。 */
+  detail: string;
   fraction: number;
   paint: string;
 }) {
@@ -127,14 +131,21 @@ function MiniMetricBar({
     "--mini-metric-color": paint,
   };
 
+  const tip = useMetricDetailTip();
+
   return (
-    <div className="metric-item">
+    <div
+      className="metric-item"
+      data-tip-open={tip.open ? "true" : undefined}
+      {...tip.handlers}
+    >
+      {tip.open && <MetricDetailTip text={detail} />}
       <div className="mini-metric-head">
         <span className="mini-metric-label">
           {icon}
           {label}
         </span>
-        <span className="mini-metric-value tabular" title={`${label} ${fullValue}`}>
+        <span className="mini-metric-value tabular" aria-label={`${label} ${fullValue}`}>
           <strong>{valueText}</strong>
           {unit && <small>{unit}</small>}
         </span>
@@ -158,6 +169,7 @@ function MiniVitals({
         label="CPU"
         valueText={node.cpuPct.toFixed(node.cpuPct >= 10 ? 0 : 1)}
         unit="%"
+        detail={`${node.cpuPct.toFixed(2)}% · ${node.cpu_cores || 0} 核`}
         fraction={node.cpuPct / 100}
         paint="var(--progress-cpu)"
       />
@@ -166,6 +178,7 @@ function MiniVitals({
         label="内存"
         valueText={node.ramPct.toFixed(node.ramPct >= 10 ? 0 : 1)}
         unit="%"
+        detail={`${formatBytes(node.ramUsed)} / ${formatBytes(node.ramTotal)}`}
         fraction={node.ramPct / 100}
         paint="var(--progress-memory)"
       />
@@ -174,6 +187,7 @@ function MiniVitals({
         label="磁盘"
         valueText={node.diskPct.toFixed(node.diskPct >= 10 ? 0 : 1)}
         unit="%"
+        detail={`${formatBytes(node.diskUsed)} / ${formatBytes(node.diskTotal)}`}
         fraction={node.diskPct / 100}
         paint="var(--progress-disk)"
       />
@@ -181,6 +195,7 @@ function MiniVitals({
         icon={<Gauge size={12} strokeWidth={2} />}
         label="负载"
         valueText={node.load1.toFixed(2)}
+        detail={`${node.load1.toFixed(2)} / ${node.load5.toFixed(2)} / ${node.load15.toFixed(2)}`}
         fraction={loadFraction}
         paint="var(--progress-load)"
       />

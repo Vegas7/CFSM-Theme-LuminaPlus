@@ -570,6 +570,76 @@
   transform: translate(-50%, -3px) rotate(45deg);
 }
 
+/*
+ * 小卡 / 迷你卡指标行的详情气泡（MetricDetailTip）：和延迟柱子的气泡同一套底色与字号，在上方弹。
+ * 两张卡的指标都是两列网格：左列贴左边、右列贴右边弹出，气泡比格子宽也不会被卡片边缘裁掉。
+ */
+.compact-node-gauge,
+.mini-node-vitals .metric-item {
+  position: relative;
+}
+
+.compact-node-gauge[data-tip-open="true"],
+.mini-node-vitals .metric-item[data-tip-open="true"] {
+  z-index: 3;
+}
+
+.node-metric-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 3;
+  width: max-content;
+  max-width: 190px;
+  pointer-events: none;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--text-primary) 90%, black 10%);
+  box-shadow: 0 10px 18px -14px rgba(0, 0, 0, 0.55);
+  color: var(--surface);
+  padding: 4px 7px;
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  white-space: nowrap;
+  animation: node-metric-tip-in 150ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.node-metric-tip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 14px;
+  width: 6px;
+  height: 6px;
+  background: inherit;
+  transform: translate(-50%, -3px) rotate(45deg);
+}
+
+.compact-node-vitals > :nth-child(even) .node-metric-tip,
+.mini-node-vitals > :nth-child(even) .node-metric-tip {
+  left: auto;
+  right: 0;
+}
+
+.compact-node-vitals > :nth-child(even) .node-metric-tip::after,
+.mini-node-vitals > :nth-child(even) .node-metric-tip::after {
+  left: auto;
+  right: 14px;
+  transform: translate(50%, -3px) rotate(45deg);
+}
+
+@keyframes node-metric-tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .compact-node-health-bar {
   display: block;
   width: 100%;
@@ -635,7 +705,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .compact-node-health-tooltip,
-  .node-health-hover-tooltip {
+  .node-health-hover-tooltip,
+  .node-metric-tip {
     animation: none;
   }
 

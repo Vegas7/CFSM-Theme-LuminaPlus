@@ -38,6 +38,7 @@ import {
   TRAFFIC_SLIVER_RATIO,
 } from "./nodeCardShared";
 import { IpStackBadges } from "./IpStackBadges";
+import { MetricDetailTip, useMetricDetailTip } from "./MetricDetailTip";
 import type {
   NodeInfo,
   NodeMetrics,
@@ -81,13 +82,16 @@ function CompactGauge({
     "--compact-gauge-color": color,
     "--compact-gauge-fill": `${clamp01(fraction) * 100}%`,
   } as CSSProperties;
+  const tip = useMetricDetailTip();
 
   return (
     <div
       className="compact-node-gauge"
       style={style}
-      title={detail ? `${label} ${value} · ${detail}` : `${label} ${value}`}
+      data-tip-open={detail && tip.open ? "true" : undefined}
+      {...(detail ? tip.handlers : undefined)}
     >
+      {detail && tip.open && <MetricDetailTip text={detail} />}
       <div className="compact-node-gauge-head">
         <span className="compact-node-gauge-label">
           {icon}
@@ -434,7 +438,7 @@ function CompactNodeVitals({
         icon={<Cpu size={12} />}
         label="CPU"
         value={formatCompactPercent(node.cpuPct)}
-        detail={`${node.cpu_cores || 0} 核`}
+        detail={`${node.cpuPct.toFixed(2)}% · ${node.cpu_cores || 0} 核`}
         fraction={node.cpuPct / 100}
         color="var(--progress-cpu)"
       />
@@ -458,7 +462,7 @@ function CompactNodeVitals({
         icon={<Gauge size={12} />}
         label="负载"
         value={node.load1.toFixed(2)}
-        detail={`${node.load5.toFixed(2)} / ${node.load15.toFixed(2)}`}
+        detail={`${node.load1.toFixed(2)} / ${node.load5.toFixed(2)} / ${node.load15.toFixed(2)}`}
         fraction={loadFraction}
         color="var(--progress-load)"
       />
