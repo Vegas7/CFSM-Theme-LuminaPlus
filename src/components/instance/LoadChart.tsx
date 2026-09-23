@@ -460,7 +460,10 @@ const ChartCard = memo(function ChartCard({
           {note != null && <span className="tabular text-[var(--text-tertiary)]">{note}</span>}
         </div>
       </header>
-      <div ref={chartSizeRef} className="instance-uplot-wrap">
+      {/* 最小高度 = 图表高度：换时间段 / 开关丢包叠加时图表会按新 key 整个重建，旧图先卸掉、新图要等
+          effect 才画上，中间有一帧这块是空的。不撑住的话整页瞬间矮几百像素，浏览器把滚动位置往上拽，
+          看着就是「一点时间段按钮页面就跳回顶上」。 */}
+      <div ref={chartSizeRef} className="instance-uplot-wrap" style={{ minHeight: h }}>
         <UplotReact
           key={`${uuid}-${rangeHours}`}
           options={chartOptions}
@@ -493,7 +496,7 @@ export function LoadChart({
   controls?: ReactNode;
 }) {
   const queryHours = hours === 0 ? REALTIME_QUERY_HOURS : hours;
-  const { data, isError, isFetching, isLoading, refetch } = useLoadRecords(
+  const { data, isError, isFetching, isLoading, isPlaceholderData, refetch } = useLoadRecords(
     uuid,
     queryHours,
     active,
@@ -708,7 +711,8 @@ export function LoadChart({
           </button>
         </div>
       }
-      className="instance-chart-panel"
+      // 换档后新数据回来之前显示的是上一档的图（见 keepPreviousRangeData），压暗一点表示正在换。
+      className={isPlaceholderData ? "instance-chart-panel is-switching" : "instance-chart-panel"}
     >
       <div className="instance-chart-grid">
         <ChartCard
