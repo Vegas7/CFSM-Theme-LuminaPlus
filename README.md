@@ -123,8 +123,8 @@ v<package.json 的 version> <更新日志>
 build: <源码 commit>
 ```
 
-发版流程：改 `package.json` 的 `version`，在 [CHANGELOG.md](CHANGELOG.md) 里加一段
-`## v<版本号>`，CI 会取该段的第一行当更新日志。没写就退回用本次源码提交的标题。
+发版流程：改 `package.json` 的 `version`。更新日志取本次源码提交的标题（合并提交取 PR 标题，
+本地合并则取被合进来的最后一次提交标题）；在 Actions 里手动运行时可以在 `changelog` 里另写一句。
 想单独补一条日志（产物没变化），在 Actions 里手动运行 workflow，填 `changelog`
 并勾上 `force` 即可。
 

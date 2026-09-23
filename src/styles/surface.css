@@ -1952,6 +1952,9 @@ body::after {
   min-width: 0;
   overflow: hidden;
   padding-bottom: 2px;
+  /* 组件里给的 min-height 是图表本身的高度（重建图表那一帧撑住页面，见 LoadChart / PingChart），
+     按内容盒算，下面这 2px 内边距另算，撑住时一个像素都不少 */
+  box-sizing: content-box;
 }
 
 .instance-uplot-wrap .uplot {

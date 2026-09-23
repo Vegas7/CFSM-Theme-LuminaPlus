@@ -9,7 +9,8 @@ name: Build theme
 #
 # 产物提交的说明就是主题商店里的「更新日志」和版本下拉的标题，格式是
 #   v<package.json 的 version> <更新日志>
-# 更新日志默认取本次源码提交的标题；手动触发时可以在 changelog 里另写一句。
+# 更新日志默认取本次源码提交的标题（合并提交取 PR 标题 / 被合进来的最后一次提交标题）；
+# 手动触发时可以在 changelog 里另写一句。
 on:
   push:
     branches: [main, preview]
@@ -39,6 +40,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 合并提交要往前找被合进来的最后一次提交标题，只拉 1 层历史找不到。
+          fetch-depth: 50
 
       - name: Resolve target branch
         id: target
@@ -62,16 +66,27 @@ jobs:
         run: |
           set -euo pipefail
           version="v$(node -p "require('./package.json').version")"
-          # 优先级：手动填的 changelog > CHANGELOG.md 里对应版本的第一行 > 源码提交标题。
+          # 优先级：手动填的 changelog > 本次源码提交的标题。
+          # 原来第二优先是 CHANGELOG.md 里当前版本那段的第一行，版本号不变时每次产物说明都一模一样，
+          # 分不出哪次构建改了什么，所以改成直接用提交标题。
           note="${CHANGELOG:-}"
-          if [ -z "${note}" ] && [ -f CHANGELOG.md ]; then
-            note="$(awk -v want="## ${version}" '
-              $0 == want { found = 1; next }
-              found && /^## / { exit }
-              found && NF { print; exit }
-            ' CHANGELOG.md)"
+          if [ -z "${note}" ]; then
+            note="$(git log -1 --pretty=%s)"
+            case "${note}" in
+              Merge\ *)
+                # 合并提交：GitHub 网页合并 PR 时正文第一行是 PR 标题，优先用它；
+                # 本地合并（GitHub Desktop 的 Merge into current branch）没有正文，退回被合进来的最后一次提交标题。
+                # awk 读完整段再只打印第一条非空行：用 head 提前退出会让上游吃 SIGPIPE，配 pipefail 整步失败。
+                pr_title="$(git log -1 --pretty=%b | awk 'NF && !done { print; done = 1 }')"
+                if [ -n "${pr_title}" ]; then
+                  note="${pr_title}"
+                else
+                  last="$(git log -1 --no-merges --pretty=%s || true)"
+                  [ -n "${last}" ] && note="${last}"
+                fi
+                ;;
+            esac
           fi
-          [ -n "${note}" ] || note="$(git log -1 --pretty=%s)"
           {
             echo "message<<RELEASE_NOTE_EOF"
             echo "${version} ${note}"

@@ -685,7 +685,10 @@ export function PingChart({
         })}
       </div>
 
-      <div ref={chartSizeRef} className="instance-uplot-wrap is-large">
+      {/* 最小高度 = 图表高度：换时间段 / 开关丢包叠加时图表会按新 key 整个重建，旧图先卸掉、新图要等
+          effect 才画上，中间有一帧这块是空的。不撑住的话整页瞬间矮几百像素，浏览器把滚动位置往上拽，
+          看着就是「一点时间段按钮页面就跳回顶上」。 */}
+      <div ref={chartSizeRef} className="instance-uplot-wrap is-large" style={{ minHeight: h }}>
         {plotData && options && visibleTasks.length > 0 ? (
           <>
             <UplotReact
