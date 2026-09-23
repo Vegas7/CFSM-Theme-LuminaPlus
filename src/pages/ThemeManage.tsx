@@ -2035,8 +2035,8 @@ export function ThemeManage() {
                   <div className="mt-2 grid gap-3 md:grid-cols-2">
                     <ToggleRow
                       field="compactShowTrafficTotal"
-                      title="显示累计流量"
-                      desc="展示出站与入站累计流量。"
+                      title="显示本期流量"
+                      desc="展示本计费周期（按重置日清零）的上行与下行用量。"
                       checked={draft.compactShowTrafficTotal}
                       onPatch={patch}
                     />

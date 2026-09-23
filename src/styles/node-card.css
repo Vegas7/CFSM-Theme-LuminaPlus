@@ -665,3 +665,22 @@
     gap: 12px;
   }
 }
+
+/* 卡片顶部整块可点进详情页（见 useNodeDetailClick）：手型光标，悬停整块时名字跟着变色提示。 */
+.node-card-head {
+  cursor: pointer;
+}
+
+/* 小卡 / 迷你卡把标题行和标签行包进一个外壳：沿用卡片的纵向间距，布局和原来一致。 */
+.node-card-head-stack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: inherit;
+}
+
+.server-card:not(.is-offline) .node-card-head:hover .server-card-title-link,
+.compact-node-card:not(.is-offline) .node-card-head:hover .compact-node-title,
+.mini-node-card:not(.is-offline) .node-card-head:hover .mini-node-title {
+  color: var(--progress-cpu);
+}

@@ -8,7 +8,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import type { PingHistoryRefreshState } from "@/hooks/usePingHistoryRefresh";
 import { getAdminUrl } from "@/services/cfsm/config";
-import type { NodeViewMode } from "@/utils/themeSettings";
+import type { Appearance, NodeViewMode } from "@/utils/themeSettings";
 import { clsx } from "clsx";
 
 const MetricColorPicker = lazy(() =>
@@ -76,11 +76,20 @@ function buildRefreshToast({
   return null;
 }
 
-const APPEARANCE_OPTIONS = [
-  { value: "light", icon: Sun, label: "浅色" },
-  { value: "system", icon: Monitor, label: "跟随系统" },
-  { value: "dark", icon: Moon, label: "深色" },
-] as const;
+// 外观合成一个按钮，点一下换下一档：跟随系统 → 浅色 → 深色 → 跟随系统。
+// 和视图按钮不同，这里图标画的是**当前**外观 ——「跟随系统」这一档光看页面是浅是深分辨不出来，
+// 按钮不画出来就没处看；下一档写在 title 里。
+const APPEARANCE_CYCLE = ["system", "light", "dark"] as const;
+const APPEARANCE_META: Record<Appearance, { icon: typeof Sun; label: string }> = {
+  system: { icon: Monitor, label: "跟随系统" },
+  light: { icon: Sun, label: "浅色" },
+  dark: { icon: Moon, label: "深色" },
+};
+
+function nextAppearance(current: Appearance): Appearance {
+  const index = APPEARANCE_CYCLE.indexOf(current);
+  return APPEARANCE_CYCLE[(index + 1) % APPEARANCE_CYCLE.length]!;
+}
 
 export function FloatingControls({
   onExpandedChange,
@@ -108,6 +117,9 @@ export function FloatingControls({
   const hiddenTabIndex = collapsed ? -1 : undefined;
   const ToggleIcon = collapsed ? ChevronLeft : ChevronRight;
   const ViewIcon = VIEW_MODE_META[nextMode].icon;
+  const AppearanceIcon = APPEARANCE_META[appearance].icon;
+  const appearanceLabel = APPEARANCE_META[appearance].label;
+  const nextAppearanceLabel = APPEARANCE_META[nextAppearance(appearance)].label;
   // 只要不在最宽松的大卡默认态,就视为"已切换"，按钮保持高亮。
   const isReducedView = mode !== "large";
   useEffect(() => {
@@ -141,29 +153,16 @@ export function FloatingControls({
           <div className="floating-controls-actions" aria-hidden={collapsed}>
             {settingsReady && (
               <>
-                <div
-                  className="control-group floating-controls-appearance"
-                  role="group"
-                  aria-label="外观选择"
+                <button
+                  type="button"
+                  onClick={() => setAppearance(nextAppearance(appearance))}
+                  aria-label={`切换外观，当前${appearanceLabel}`}
+                  title={`外观：${appearanceLabel}（点击切换到${nextAppearanceLabel}）`}
+                  tabIndex={hiddenTabIndex}
+                  className="control-button grid h-9 w-9 place-items-center"
                 >
-                  {APPEARANCE_OPTIONS.map(({ value, icon: Icon, label }) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setAppearance(value)}
-                      aria-label={label}
-                      aria-pressed={appearance === value}
-                      title={label}
-                      tabIndex={hiddenTabIndex}
-                      className={clsx(
-                        "control-button grid h-9 w-9 place-items-center",
-                        appearance === value && "control-toggle is-active",
-                      )}
-                    >
-                      <Icon size={16} />
-                    </button>
-                  ))}
-                </div>
+                  <AppearanceIcon size={16} />
+                </button>
                 <button
                   type="button"
                   onClick={toggleMode}

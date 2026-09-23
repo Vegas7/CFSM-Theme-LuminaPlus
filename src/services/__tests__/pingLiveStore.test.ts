@@ -658,4 +658,35 @@ describe("丢弃后端窗口里复制出来的格子", () => {
 
     expect(getPingHistorySnapshot(uuid)).toHaveLength(6);
   });
+
+  it("新后端 6 分钟一格的窗口是真实采样：稳定线路整窗一样也不丢", () => {
+    // 线上 Misaka NRT：同机房探 Google/Cloudflare，20 个点全是 1ms、丢包 0，三网没配（null）。
+    // 曾被当成复印件整窗丢掉，首页只剩本地攒的几格，悬停全是「无样本」。
+    const uuid = "stable-custom-line";
+    seedPingHistory(
+      uuid,
+      Array.from({ length: 20 }, (_, index) => ({
+        time: NOW - (19 - index) * 6 * 60_000,
+        ping: ping({ node_1: 1, lossNode1: 0, node_2: 1, lossNode2: 0 }),
+      })),
+    );
+
+    expect(getPingHistorySnapshot(uuid)).toHaveLength(20);
+    const item = buildPingOverviewItem(uuid, 5, getPingHistorySnapshot(uuid));
+    expect(item.isAssigned).toBe(true);
+    expect(buildPingBuckets(item, 20, NOW).every((bucket) => bucket.total > 0)).toBe(true);
+  });
+
+  it("新后端窗口调成 1 小时 20 个点（3 分钟一格）也不当老窗口", () => {
+    const uuid = "stable-three-minute-grid";
+    seedPingHistory(
+      uuid,
+      Array.from({ length: 20 }, (_, index) => ({
+        time: NOW - (19 - index) * 3 * 60_000,
+        ping: ping({ node_1: 1, lossNode1: 0 }),
+      })),
+    );
+
+    expect(getPingHistorySnapshot(uuid)).toHaveLength(20);
+  });
 })

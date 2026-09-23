@@ -38,6 +38,8 @@ import {
   TRAFFIC_SLIVER_RATIO,
 } from "./nodeCardShared";
 import { IpStackBadges } from "./IpStackBadges";
+import { NodeCardHead } from "./NodeCardHead";
+import { nodeDetailPath } from "./useNodeDetailClick";
 import { MetricDetailTip, useMetricDetailTip } from "./MetricDetailTip";
 import type {
   NodeInfo,
@@ -363,7 +365,7 @@ function CompactNodeHeader({
         <div className="compact-node-title-row">
           <Flag region={node.region} size={15} />
           <Link
-            to={`/server/${encodeURIComponent(node.uuid)}`}
+            to={nodeDetailPath(node.uuid)}
             className="compact-node-title"
             title={node.name}
           >
@@ -373,7 +375,7 @@ function CompactNodeHeader({
       </div>
       <div className="compact-node-actions">
         <Link
-          to={`/server/${encodeURIComponent(node.uuid)}`}
+          to={nodeDetailPath(node.uuid)}
           className="compact-node-detail-link"
           title={detailLabels.title}
           aria-label={detailLabels.ariaLabel}
@@ -521,7 +523,8 @@ function CompactNodeInfoStrip({
       </CompactInfoTile>
       {showTrafficTotal && (
         <CompactInfoTile
-          label="累计流量"
+          // 本计费周期的用量（按重置日清零），和下面流量进度条同一口径，不是开机以来的累计。
+          label="本期流量"
           color="var(--text-primary)"
         >
           <CompactInfoRow
@@ -532,7 +535,7 @@ function CompactNodeInfoStrip({
                 aria-label="上行"
               />
             )}
-            value={formatBytes(node.trafficUp)}
+            value={formatBytes(node.trafficUpMonthly)}
           />
           <CompactInfoRow
             icon={(
@@ -542,7 +545,7 @@ function CompactNodeInfoStrip({
                 aria-label="下行"
               />
             )}
-            value={formatBytes(node.trafficDown)}
+            value={formatBytes(node.trafficDownMonthly)}
           />
         </CompactInfoTile>
       )}
@@ -742,11 +745,13 @@ export const CompactNodeCard = memo(function CompactNodeCard({
 
   return (
     <article className={clsx("compact-node-card", isOffline && "is-offline")}>
-      <CompactNodeHeader
-        node={node}
-        osName={osName}
-      />
-      <CompactNodeChips subtitle={subtitle} tags={footerTags} ipv4={node.ipv4} ipv6={node.ipv6} />
+      <NodeCardHead uuid={node.uuid}>
+        <CompactNodeHeader
+          node={node}
+          osName={osName}
+        />
+        <CompactNodeChips subtitle={subtitle} tags={footerTags} ipv4={node.ipv4} ipv6={node.ipv6} />
+      </NodeCardHead>
       <CompactNodeVitals node={node} loadFraction={loadFraction} />
       <CompactNodeInfoStrip
         node={node}

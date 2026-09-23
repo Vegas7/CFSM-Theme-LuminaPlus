@@ -38,6 +38,7 @@ import {
   TRAFFIC_SLIVER_RATIO,
 } from "./nodeCardShared";
 import { IpStackBadges } from "./IpStackBadges";
+import { nodeDetailPath, useNodeDetailClick } from "./useNodeDetailClick";
 import { HealthBucketTooltip } from "./HealthBucketTooltip";
 import { MultiPingStatus } from "./MultiPingStatus";
 import { formatHealthBucketTooltip } from "./pingBucketText";
@@ -197,13 +198,14 @@ function NodeCardHeader({
   osName: string;
 }) {
   const detailLabels = nodeDetailLinkLabels(node.name, osName);
+  const detailClick = useNodeDetailClick(node.uuid);
   return (
-    <header className="server-card-header">
+    <header className="server-card-header node-card-head" {...detailClick}>
       <div className="server-card-title-block">
         <div className="server-card-title-row">
           <Flag region={node.region} size={15} />
           <Link
-            to={`/server/${encodeURIComponent(node.uuid)}`}
+            to={nodeDetailPath(node.uuid)}
             className="server-card-title-link"
             title={node.name}
           >
@@ -223,7 +225,7 @@ function NodeCardHeader({
       </div>
       <div className="server-card-actions">
         <Link
-          to={`/server/${encodeURIComponent(node.uuid)}`}
+          to={nodeDetailPath(node.uuid)}
           className="server-card-detail-link"
           title={detailLabels.title}
           aria-label={detailLabels.ariaLabel}
@@ -311,7 +313,8 @@ function NodeTrafficSection({
         direction="上行"
         totalLabel="出站"
         rate={upRate}
-        total={formatBytes(node.trafficUp)}
+        // 本计费周期的用量（按重置日清零，和下面流量进度条同一口径），不是开机以来的累计。
+        total={formatBytes(node.trafficUpMonthly)}
         samples={trafficTrend.up}
         live={isOnline}
         active={node.netUp > 0}
@@ -323,7 +326,7 @@ function NodeTrafficSection({
         direction="下行"
         totalLabel="入站"
         rate={downRate}
-        total={formatBytes(node.trafficDown)}
+        total={formatBytes(node.trafficDownMonthly)}
         samples={trafficTrend.down}
         live={isOnline}
         active={node.netDown > 0}
@@ -747,10 +750,10 @@ function TrafficStat({
           {live && <span>{active ? "实时" : "空闲"}</span>}
         </span>
       </div>
-      <div className="traffic-stat-foot">
+      <div className="traffic-stat-foot" title={`本周期${totalLabel}（按重置日清零）`}>
         <div className="traffic-stat-total-label">
           <GlobeArrow direction={totalLabel} color={color} />
-          <span>{totalLabel}</span>
+          <span>本期{totalLabel}</span>
         </div>
         <span className="tabular">{total}</span>
       </div>

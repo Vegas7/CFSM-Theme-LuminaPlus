@@ -64,6 +64,17 @@ const REALTIME_SAMPLE_LIMIT = 600;
 const RESUME_REFETCH_HIDDEN_MS = 30_000;
 /** 兜底：在前台但这么久没收到实时样本（WS 掉了、实时连接到时限），同样重拉一次补上。 */
 const STALE_TAIL_REFETCH_MS = 5 * 60_000;
+/**
+ * 历史档多久把新到的实时样本画上去一次。
+ *
+ * 实时档每个样本都画（约 2 秒一帧）；历史档横轴动辄几小时到几天，两秒挪一次右端肉眼根本看不出，
+ * 只是白白重画 8 张图。按区间宽度走：1 小时 10 秒、6 小时 30 秒、12 小时及以上 60 秒 ——
+ * 大致是「右端往前挪一两个像素」的时间。样本照常每个都收（存在 ref 里），只是攒着一起画，
+ * 所以这期间的尖峰（比如跑一次测速）不会漏。
+ */
+function liveCommitIntervalMs(hours: number): number {
+  return Math.min(60, Math.max(10, hours * 5)) * 1000;
+}
 
 const CPU_KEYS = ["cpu"];
 const CPU_COLORS = [CHART_PALETTE.cpu];
@@ -227,7 +238,7 @@ function buildBaseOptions({
   spanGaps,
   axisKind,
   axisSize = 52,
-  xRange,
+  xRangeRef,
   fillAllSeries,
 }: {
   title: string;
@@ -238,7 +249,12 @@ function buildBaseOptions({
   spanGaps?: boolean;
   axisKind: "percent" | "network" | "byteRate" | "count";
   axisSize?: number;
-  xRange?: [number, number] | null;
+  /**
+   * 历史档的横轴区间。传的是 ref 而不是值：区间右端会跟着实时样本往前推，值要是进了 options，
+   * 每来一个样本 options 就换一份，uplot-react 会把整张图销毁重建，入场的「从左往右扫出」动画
+   * 跟着重播一遍 —— 历史档每两秒刷一下就是这么来的。放进 ref 后 options 不变，只走 setData。
+   */
+  xRangeRef?: { readonly current: [number, number] | null };
   fillAllSeries?: boolean;
 }): Omit<uPlot.Options, "width" | "height"> {
   const isDark = resolvedAppearance === "dark";
@@ -249,7 +265,13 @@ function buildBaseOptions({
     cursor: { drag: { x: true, y: false } },
     legend: { show: false },
     scales: {
-      x: xRange ? { time: true, auto: false, range: () => xRange } : { time: true },
+      x: xRangeRef
+        ? {
+            time: true,
+            auto: false,
+            range: (_u, min, max) => xRangeRef.current ?? [min, max],
+          }
+        : { time: true },
       y: { auto: true },
     },
     axes: [
@@ -351,9 +373,18 @@ const ChartCard = memo(function ChartCard({
     time: "",
   });
   const data = useMemo(() => metricData(points, keys), [points, keys]);
+  const xRangeRef = useRef<[number, number] | null>(xRange ?? null);
+  // 实时档不固定横轴（跟着数据走），历史档固定到查询区间；只有「固不固定」进 options，区间本身走 ref。
+  const hasFixedXRange = rangeHours !== 0;
+  const chartRef = useRef<uPlot | null>(null);
   useLayoutEffect(() => {
     dataRef.current = data;
   }, [data]);
+  useLayoutEffect(() => {
+    xRangeRef.current = xRange ?? null;
+    // 区间变了而数据没变（setData 不会被调）时，手动让横轴重新取一次区间。
+    if (xRange) chartRef.current?.setScale("x", { min: xRange[0], max: xRange[1] });
+  }, [xRange]);
   const baseOptions = useMemo(
     () =>
       buildBaseOptions({
@@ -365,7 +396,7 @@ const ChartCard = memo(function ChartCard({
         spanGaps,
         axisKind,
         axisSize,
-        xRange,
+        xRangeRef: hasFixedXRange ? xRangeRef : undefined,
         fillAllSeries,
       }),
     [
@@ -373,12 +404,12 @@ const ChartCard = memo(function ChartCard({
       axisSize,
       colors,
       fillAllSeries,
+      hasFixedXRange,
       keys,
       rangeHours,
       resolvedAppearance,
       spanGaps,
       title,
-      xRange,
     ],
   );
 
@@ -435,7 +466,14 @@ const ChartCard = memo(function ChartCard({
           key={`${uuid}-${rangeHours}`}
           options={chartOptions}
           data={data}
-          resetScales={rangeHours === 0}
+          // 历史档也要重算：横轴右端跟着实时样本往前推（区间由 xRangeRef 给），纵轴跟着新数据伸缩。
+          resetScales
+          onCreate={(chart) => {
+            chartRef.current = chart;
+          }}
+          onDelete={() => {
+            chartRef.current = null;
+          }}
         />
         <ChartTooltip tooltip={tooltip} />
       </div>
@@ -465,6 +503,8 @@ export function LoadChart({
   const meta = useNodeMeta(uuid);
   const { resolvedAppearance } = usePreferences();
   const [realtimePoints, setRealtimePoints] = useState<ChartPoint[]>([]);
+  /** 收到的全部实时样本。实时档每来一个就提交画上去；历史档按 {@link liveCommitIntervalMs} 攒着提交。 */
+  const livePointsRef = useRef<ChartPoint[]>([]);
   /** 上一条实时样本的到达时刻，用来发现「断了一段」。 */
   const lastSampleAtRef = useRef(0);
   const [connectNulls, setConnectNulls] = useState(false);
@@ -486,13 +526,21 @@ export function LoadChart({
     if (sinceLast >= STALE_TAIL_REFETCH_MS) void refetch();
     const point = pointFromNode(node);
     // 实时档只看最近一段，超上限砍最老的；历史档要一直接到历史末尾，超上限改为抽稀（见 appendLiveChartPoint）。
-    setRealtimePoints((prev) =>
-      appendLiveChartPoint(prev, point, {
-        dense: isRealtime,
-        limit: isRealtime ? REALTIME_SAMPLE_LIMIT : undefined,
-      }),
-    );
+    livePointsRef.current = appendLiveChartPoint(livePointsRef.current, point, {
+      dense: isRealtime,
+      limit: isRealtime ? REALTIME_SAMPLE_LIMIT : undefined,
+    });
+    if (isRealtime) setRealtimePoints(livePointsRef.current);
   }, [active, isRealtime, node, refetch]);
+
+  // 历史档定时把攒下的实时样本画上去；没有新样本时引用不变，不会触发重画。
+  useEffect(() => {
+    if (!active || isRealtime) return;
+    const timer = window.setInterval(() => {
+      setRealtimePoints(livePointsRef.current);
+    }, liveCommitIntervalMs(hours));
+    return () => window.clearInterval(timer);
+  }, [active, hours, isRealtime]);
 
   // 回到前台补历史：后台那段时间实时推送是断的，只靠实时样本接不回来。
   useEffect(() => {
@@ -512,6 +560,7 @@ export function LoadChart({
   }, [active, refetch]);
 
   useEffect(() => {
+    livePointsRef.current = [];
     setRealtimePoints([]);
     lastSampleAtRef.current = 0;
   }, [hours, uuid]);

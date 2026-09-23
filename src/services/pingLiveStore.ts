@@ -83,6 +83,15 @@ const DEFAULT_WINDOW_STEP_MS = 120_000;
  * 真探测不会这样 —— 取 4 格（8 分钟）作为门槛，宁可漏判也不误杀。
  */
 const BACKFILL_RUN_MIN_LENGTH = 4;
+/**
+ * 只有老后端的窗口才可能是复印件：那时是 1 小时 30 格、2 分钟一格的固定网格，缺的格子按最近邻复制。
+ * 现在的后端（2 小时 20 个点、约 6 分钟一格）每格都是 D1 里抽出来的真实采样，没有就给 null，不再复制。
+ * 对新窗口还套复印段判定，会把**本来就很稳的线路**（同机房探 Google/Cloudflare 常年 1ms、丢包 0）整窗
+ * 当复印件丢光 —— 首页只剩本地攒的几格，悬停全是「无样本」，要进详情页拉一次历史才补回来。
+ * 网格步长超过这个值就当新窗口，不做复印段过滤。老网格是整 2 分钟，取 2.5 分钟留一点余量；
+ * 不取 3 分钟：新后端哪天把窗口调回 1 小时 20 个点，恰好就是 3 分钟一格，不能又被当成老窗口。
+ */
+const LEGACY_WINDOW_MAX_STEP_MS = 150_000;
 /** 本地样本间隔推不出来时的兜底。 */
 const DEFAULT_LOCAL_CADENCE_MS = 40_000;
 /**
@@ -518,11 +527,15 @@ function sameSeries(a: readonly PingLiveSample[], b: readonly PingLiveSample[]):
  *
  * **含整轮超时的段不丢**：持续断网时每一格都是「延迟超时、丢包 100」，逐字节相同却是真实数据；
  * 当复印件丢掉的话，一段断网在首页上是一片空白而不是一排红格。
+ *
+ * **只对老后端的 2 分钟网格生效**（见 {@link LEGACY_WINDOW_MAX_STEP_MS}）：新后端的点都是真实采样，
+ * 延迟稳定的线路连着几格一模一样是常态，不能当复印件。
  */
 function dropBackfilledRuns(
   window: readonly PingLiveSample[],
 ): readonly PingLiveSample[] {
   if (window.length < BACKFILL_RUN_MIN_LENGTH) return window;
+  if (resolveWindowStepMs(window) > LEGACY_WINDOW_MAX_STEP_MS) return window;
 
   const kept: PingLiveSample[] = [];
   let runStart = 0;

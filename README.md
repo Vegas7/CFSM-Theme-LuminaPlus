@@ -2,6 +2,7 @@
 
 [CF-Server-Monitor](https://github.com/huilang-me/CF-Server-Monitor) 的第三方主题，
 由 [Komari-Theme-LuminaPlus](https://github.com/shanyang242/Komari-Theme-LuminaPlus) 移植而来。
+由 [CFSM-Theme-LuminaPlus](https://github.com/volcano-1025/CFSM-Theme-LuminaPlus) 二次修改。
 
 界面与交互沿用 LuminaPlus：大 / 小 / 迷你 / 列表四种卡片、首页总览与分组筛选、
 资产统计、实例详情的负载与延迟图表（延迟图带丢包色带）；数据层全部改为
@@ -20,7 +21,7 @@ CF-Server-Monitor 的公开 API。
 主题商店里没有、或者想装指定版本时，把下面这行地址填进后台的自定义主题 URL：
 
 ```
-https://github.com/volcano-1025/CFSM-Theme-LuminaPlus/tree/dist
+https://github.com/Vegas7/CFSM-Theme-LuminaPlus/tree/dist
 ```
 
 `dist` 是构建产物分支（源码在 `main`，别填错）。想锁定某一版就把 `dist` 换成那一版产物提交的

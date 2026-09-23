@@ -361,11 +361,12 @@ const NodeRow = memo(function NodeRow({ uuid }: { uuid: string }) {
 
       <div
         className="node-list-cell col-traffic"
-        title={`剩余 ${traffic.remainingLabel} · ${traffic.detail}`}
+        title={`本期流量 · 剩余 ${traffic.remainingLabel} · ${traffic.detail}`}
       >
+        {/* 本计费周期的上下行（按重置日清零），和右边的用量百分比同一口径。 */}
         <div className="node-list-traffic-rows">
-          <StackLine icon={<ArrowUp size={11} strokeWidth={2.1} />} value={formatBytes(node.trafficUp)} />
-          <StackLine icon={<ArrowDown size={11} strokeWidth={2.1} />} value={formatBytes(node.trafficDown)} />
+          <StackLine icon={<ArrowUp size={11} strokeWidth={2.1} />} value={formatBytes(node.trafficUpMonthly)} />
+          <StackLine icon={<ArrowDown size={11} strokeWidth={2.1} />} value={formatBytes(node.trafficDownMonthly)} />
         </div>
         <span className="node-list-traffic-quota" style={{ color: traffic.color }}>
           {usedPct}

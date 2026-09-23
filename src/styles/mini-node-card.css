@@ -209,7 +209,7 @@
   );
 }
 
-/* Mini 遥测带：左侧实时上下行，右侧累计上下行。 */
+/* Mini 遥测带：左侧实时上下行，右侧本期上下行。 */
 .mini-node-flow {
   display: grid;
   min-width: 0;

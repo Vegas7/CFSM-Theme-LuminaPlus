@@ -15,6 +15,8 @@ import { clsx } from "clsx";
 import { Flag } from "@/components/ui/Flag";
 import { OsLogo } from "@/components/ui/OsLogo";
 import { IpStackBadges } from "./IpStackBadges";
+import { NodeCardHead } from "./NodeCardHead";
+import { nodeDetailPath } from "./useNodeDetailClick";
 import { HealthBucketTooltip } from "./HealthBucketTooltip";
 import { MetricDetailTip, useMetricDetailTip } from "./MetricDetailTip";
 import { resolveTouchBucketIndex, TOUCH_BUCKET_HOLD_MS } from "./touchBucketPick";
@@ -46,7 +48,7 @@ function MiniHeader({
   osName: string;
 }) {
   const detailLabels = nodeDetailLinkLabels(node.name, osName);
-  const detailHref = `/server/${encodeURIComponent(node.uuid)}`;
+  const detailHref = nodeDetailPath(node.uuid);
   return (
     <header className="mini-node-header">
       <Flag region={node.region} size={14} />
@@ -232,7 +234,8 @@ function MiniFlowRow({
   );
 }
 
-// 左栏集中显示实时速率，右栏集中显示累计流量；每栏均按上行、下行排列。
+// 左栏集中显示实时速率，右栏集中显示本期流量（按重置日清零，和大卡/小卡的流量进度条同一口径）；
+// 每栏均按上行、下行排列。
 function MiniFlow({
   node,
   upRate,
@@ -260,16 +263,16 @@ function MiniFlow({
           title="实时下行"
         />
       </div>
-      <div className="mini-node-flow-group" aria-label="累计流量">
+      <div className="mini-node-flow-group" aria-label="本期流量">
         <MiniFlowRow
           icon={<ArrowUp size={12} strokeWidth={2.2} />}
-          value={formatBytes(node.trafficUp)}
-          title="累计上行"
+          value={formatBytes(node.trafficUpMonthly)}
+          title="本期上行"
         />
         <MiniFlowRow
           icon={<ArrowDown size={12} strokeWidth={2.2} />}
-          value={formatBytes(node.trafficDown)}
-          title="累计下行"
+          value={formatBytes(node.trafficDownMonthly)}
+          title="本期下行"
         />
       </div>
     </div>
@@ -468,11 +471,13 @@ export const MiniNodeCard = memo(function MiniNodeCard({
 
   return (
     <article className={clsx("mini-node-card", isOffline && "is-offline")}>
-      <MiniHeader
-        node={node}
-        osName={osName}
-      />
-      <MiniChips tags={footerTags} renewalPrice={renewalPrice} ipv4={node.ipv4} ipv6={node.ipv6} />
+      <NodeCardHead uuid={node.uuid}>
+        <MiniHeader
+          node={node}
+          osName={osName}
+        />
+        <MiniChips tags={footerTags} renewalPrice={renewalPrice} ipv4={node.ipv4} ipv6={node.ipv6} />
+      </NodeCardHead>
       <MiniVitals node={node} loadFraction={loadFraction} />
       <MiniFlow node={node} upRate={upRate} downRate={downRate} />
       <MiniHealth
