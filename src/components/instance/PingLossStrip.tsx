@@ -3,6 +3,7 @@ import { clsx } from "clsx";
 import { lossHeatColor } from "@/utils/metricTone";
 import { trimFixed } from "@/utils/format";
 import { TOUCH_BUCKET_HOLD_MS } from "@/components/node/touchBucketPick";
+import { formatTooltipTime } from "./chartShared";
 
 /**
  * Ping 图下方的丢包色带。
@@ -14,15 +15,15 @@ import { TOUCH_BUCKET_HOLD_MS } from "@/components/node/touchBucketPick";
  * 色阶与首页卡片、迷你卡共用 lossHeatColor（0% 绿 → 20%+ 红）。
  * 没有采样的时段不画，露出底色轨道 —— 掉线和「丢包 0%」必须看得出区别。
  *
- * 鼠标放在某一行上：左边的线路名用该线路的颜色亮起、其余线路名变淡，指针旁边弹一个小框写这一格的
- * 丢包率。行与行之间那 1px 的缝算上一行，免得在两行之间划过时框一闪一闪。触屏点一下同样弹出，
+ * 鼠标放在某一行上：左边的线路名用该线路的颜色亮起、其余线路名变淡，指针旁边弹一个小框，写法和下面
+ * 延迟图的提示框一样（时间在上，一行「线路名 · 丢包率」），只是只写鼠标所在的这一条线路。行与行之间那 1px 的缝算上一行，免得在两行之间划过时框一闪一闪。触屏点一下同样弹出，
  * 松手后留 2.5 秒（和首页柱子一个手感）。
  */
 
 const ROW_HEIGHT = 6;
 /** 气泡离指针的距离，和估计宽度（用来判断右边放不放得下，放不下就翻到指针左边）。 */
 const TIP_OFFSET = 12;
-const TIP_ESTIMATED_WIDTH = 116;
+const TIP_ESTIMATED_WIDTH = 180;
 
 /**
  * 横向位置 `fraction`（0~1，相对色带轨道）落在哪一格、那一格的丢包率。
@@ -68,6 +69,8 @@ interface LossHover {
   y: number;
   /** undefined：指针在线路名上或轨道两端的空白处，只亮线路名、不弹框；null：这一格没采到。 */
   value: number | null | undefined;
+  /** 这一格的采样时刻（秒），和主图提示框的时间取法一致；不弹框时为 null。 */
+  time: number | null;
 }
 
 export interface PingLossRow {
@@ -88,6 +91,7 @@ export function PingLossStrip({
   rightPad,
   isDark,
   cursorLeft,
+  rangeHours,
 }: {
   times: number[];
   xRange: [number, number] | null;
@@ -98,6 +102,8 @@ export function PingLossStrip({
   isDark: boolean;
   /** 主图游标距绘图区左边的像素；null 表示鼠标不在图上。 */
   cursorLeft: number | null;
+  /** 当前档位的小时数：提示框的时间格式跟主图走（1 天及以上带日期）。 */
+  rangeHours: number;
 }) {
   const trackWidth = Math.max(0, chartWidth - gutter - rightPad);
   const stripRef = useRef<HTMLDivElement | null>(null);
@@ -151,7 +157,13 @@ export function PingLossStrip({
       trackX >= 0 && trackX <= trackWidth
         ? lossAtPosition(times, target.loss, xRange, trackX / trackWidth)
         : null;
-    setHover({ row, x, y, value: hit ? hit.value : undefined });
+    setHover({
+      row,
+      x,
+      y,
+      value: hit ? hit.value : undefined,
+      time: hit ? (times[hit.index] ?? null) : null,
+    });
   };
 
   const endHover = (event: PointerEvent<HTMLDivElement>) => {
@@ -211,22 +223,29 @@ export function PingLossStrip({
           />
         </div>
       ))}
-      {hover != null && hover.value !== undefined && (
+      {hover != null && hover.value !== undefined && rows[hover.row] && (
         <div
           className="instance-chart-tooltip ping-loss-tooltip"
           style={{ left: tipLeft, top: hover.y + TIP_OFFSET }}
           aria-hidden
         >
+          {hover.time != null && (
+            <div className="instance-chart-tooltip-time">
+              {formatTooltipTime(hover.time, rangeHours)}
+            </div>
+          )}
           <div className="instance-chart-tooltip-row">
+            {/* 圆点用线路色（和主图提示框一致），丢包率数字用色阶色，一眼看出轻重 */}
             <span
               className="instance-chart-tooltip-dot"
-              style={{
-                background:
-                  hover.value == null ? "var(--text-tertiary)" : lossHeatColor(hover.value),
-              }}
+              style={{ background: rows[hover.row].color ?? "var(--text-tertiary)" }}
             />
-            <span>丢包率</span>
-            <strong>{hover.value == null ? "无采样" : `${trimFixed(hover.value, 1)}%`}</strong>
+            <span className="ping-loss-tooltip-name">{rows[hover.row].label}</span>
+            <strong
+              style={hover.value == null ? undefined : { color: lossHeatColor(hover.value) }}
+            >
+              {hover.value == null ? "无采样" : `丢包 ${trimFixed(hover.value, 1)}%`}
+            </strong>
           </div>
         </div>
       )}

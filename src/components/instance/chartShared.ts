@@ -178,7 +178,7 @@ export function createTimeAxisFormatter(rangeHours: number) {
     splits.map((value) => formatAxisTime(value, rangeHours));
 }
 
-function formatTooltipTime(timestampSeconds: number, rangeHours = 0): string {
+export function formatTooltipTime(timestampSeconds: number, rangeHours = 0): string {
   const parts = getDateParts(timestampSeconds);
   if (rangeHours >= 24) {
     return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;

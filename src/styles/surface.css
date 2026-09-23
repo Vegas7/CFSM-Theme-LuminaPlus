@@ -2094,10 +2094,14 @@ body::after {
   font-weight: 700;
 }
 
-/* 只有一行「丢包率 xx%」，不需要主图气泡那么宽 */
+/* 和主图提示框同款；只有一行，不折行，线路名太长时省略 */
 .ping-loss-tooltip {
-  min-width: 0;
   white-space: nowrap;
+}
+
+.ping-loss-tooltip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .instance-ping-task {

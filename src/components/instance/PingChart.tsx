@@ -659,6 +659,7 @@ export function PingChart({
           rightPad={CHART_PADDING_RIGHT}
           isDark={isDark}
           cursorLeft={cursorLeft}
+          rangeHours={hours}
         />
       )}
 
