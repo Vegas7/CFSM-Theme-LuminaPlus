@@ -144,7 +144,6 @@ export function PingChart({
    * 再点已选中的是去掉，全去掉又回到全部显示。「清除」一键回到全部。
    */
   const [selectedTasks, setSelectedTasks] = useState<ReadonlySet<number>>(EMPTY_TASK_IDS);
-  const [connectNulls, setConnectNulls] = useState(false);
   const [cutPeak, setCutPeak] = useState(false);
   const [showLossArea, setShowLossArea] = useState(true);
   const chartRef = useRef<uPlot.AlignedData>([[]]);
@@ -474,7 +473,9 @@ export function PingChart({
           label: taskLabels.get(task.id) ?? `任务 #${task.id}`,
           stroke: taskColors.get(task.id) ?? colorForSeries(index, tasks.length),
           width: 1.7,
-          spanGaps: connectNulls,
+          // 断点如实画出来（掉线、整段丢包看得见）；偶尔漏一两次采样的小空缺已由
+          // insertMetricGapSentinels 自动桥接。原来的「断点连线」开关已去掉。
+          spanGaps: false,
           show: !hiddenTasks.has(task.id),
           points: { show: false },
         })),
@@ -510,7 +511,7 @@ export function PingChart({
         setCursor: [tooltipHooks.onSetCursor],
       },
     };
-  }, [chart, connectNulls, hiddenTasks, hours, isDark, lossRange, requestedXRange, showLossArea, taskColors, taskIndexById, taskLabels, tasks, visibleTasks, yRange]);
+  }, [chart, hiddenTasks, hours, isDark, lossRange, requestedXRange, showLossArea, taskColors, taskIndexById, taskLabels, tasks, visibleTasks, yRange]);
 
   const options = useMemo<uPlot.Options | null>(
     () => (baseOptions ? { ...baseOptions, width: w, height: h } : null),
@@ -648,12 +649,6 @@ export function PingChart({
           onToggle={() => setCutPeak((value) => !value)}
           title="对尖峰值做轻度平滑，仅影响图线显示"
         />
-        <SwitchToggle
-          label="断点连线"
-          active={connectNulls}
-          onToggle={() => setConnectNulls((value) => !value)}
-          title="关闭：如实显示中断/丢包断点；开启：跨过所有空缺连成完整曲线（更好看，但看不出掉线）。注：偶尔漏一两次采样的小空缺始终自动桥接，不受此开关影响。"
-        />
         <button
           type="button"
           className="instance-toggle-button"
@@ -718,7 +713,7 @@ export function PingChart({
         {plotData && options && visibleTasks.length > 0 ? (
           <>
             <UplotReact
-              key={`${uuid}-${hours}-${cutPeak ? "smooth" : "raw"}-${connectNulls ? "span" : "gap"}-${showLossArea ? "loss" : "noloss"}`}
+              key={`${uuid}-${hours}-${cutPeak ? "smooth" : "raw"}-${showLossArea ? "loss" : "noloss"}`}
               options={options}
               data={plotData}
             />

@@ -24,7 +24,7 @@ import {
   useResponsiveChartSize,
   type ChartTooltipState,
 } from "./chartShared";
-import { ChartTooltip, SwitchToggle } from "./ChartParts";
+import { ChartTooltip } from "./ChartParts";
 import {
   downsampleAligned,
   appendLiveChartPoint,
@@ -507,7 +507,6 @@ export function LoadChart({
   const livePointsRef = useRef<ChartPoint[]>([]);
   /** 上一条实时样本的到达时刻，用来发现「断了一段」。 */
   const lastSampleAtRef = useRef(0);
-  const [connectNulls, setConnectNulls] = useState(false);
   const totalFallbacks = useMemo(
     () => ({
       ramTotal: meta?.mem_total,
@@ -715,11 +714,6 @@ export function LoadChart({
               采样 <strong>{sampleSummary}</strong>
             </span>
           </div>
-          <SwitchToggle
-            label="断点连线"
-            active={connectNulls}
-            onToggle={() => setConnectNulls((value) => !value)}
-          />
           <button
             type="button"
             className="instance-toggle-button"
@@ -751,7 +745,6 @@ export function LoadChart({
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           unit="%"
-          spanGaps={connectNulls}
           axisKind="percent"
           xRange={requestedXRange}
         />
@@ -781,7 +774,6 @@ export function LoadChart({
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           unit="%"
-          spanGaps={connectNulls}
           axisKind="percent"
           xRange={requestedXRange}
         />
@@ -803,7 +795,6 @@ export function LoadChart({
             colors={DISK_IO_COLORS}
             resolvedAppearance={resolvedAppearance}
             rangeHours={hours}
-            spanGaps={connectNulls}
             axisKind="byteRate"
             axisSize={72}
             xRange={requestedXRange}
@@ -823,7 +814,6 @@ export function LoadChart({
             resolvedAppearance={resolvedAppearance}
             rangeHours={hours}
             unit="%"
-            spanGaps={connectNulls}
             axisKind="percent"
             xRange={requestedXRange}
           />
@@ -852,7 +842,6 @@ export function LoadChart({
           colors={NETWORK_COLORS}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
-          spanGaps={connectNulls}
           axisKind="network"
           axisSize={78}
           xRange={requestedXRange}
@@ -874,7 +863,6 @@ export function LoadChart({
           colors={CONNECTION_COLORS}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
-          spanGaps={connectNulls}
           axisKind="count"
           xRange={requestedXRange}
         />
@@ -901,7 +889,6 @@ export function LoadChart({
           colors={PROCESS_COLORS}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
-          spanGaps={connectNulls}
           axisKind="count"
           xRange={requestedXRange}
         />
