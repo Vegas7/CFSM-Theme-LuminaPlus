@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import UplotReact from "uplot-react";
 import type uPlot from "uplot";
-import { Eye, EyeOff, RefreshCw } from "lucide-react";
+import { Eye, RefreshCw } from "lucide-react";
 import { usePingRecords } from "@/hooks/useRecords";
 import { useCarrierNames } from "@/hooks/usePublicConfig";
 import { carrierTaskName } from "@/services/cfsm/mappers";
@@ -25,6 +25,7 @@ import {
   smoothByCount,
 } from "./chartData";
 import { latencyHeatColor, lossHeatColor } from "@/utils/metricTone";
+import { trimFixed } from "@/utils/format";
 import { historyChartRangeSeconds, historyCoverageLabel } from "@/utils/historyRange";
 import {
   bucketPingLoss,
@@ -104,11 +105,18 @@ export function summarizePingRecords(records: PingRecord[]) {
 }
 
 const EMPTY_PING_STATS: PingTaskStats[] = [];
+const EMPTY_TASK_IDS: ReadonlySet<number> = new Set();
 const MAX_RENDER_POINTS = 160;
 // 纵轴槽位与左右内边距：丢包色带靠这三个常量与主图对齐，改一处必须改另一处。
 const Y_AXIS_SIZE = 64;
 const CHART_PADDING_LEFT = 2;
 const CHART_PADDING_RIGHT = 14;
+/**
+ * 丢包叠加（和哪吒探针一个画法）：每条线路的丢包率画成同色半透明面积，挂在右侧的百分比纵轴上，
+ * 和延迟折线在同一张图里。右轴占掉的宽度要同步给丢包色带（色带靠它对齐右边界）。
+ */
+const LOSS_AXIS_SIZE = 44;
+const LOSS_AREA_ALPHA = 0.3;
 // 1 即关闭平滑(smoothByCount 对 <=1 原样返回);保留常量便于调参,非削峰模式当前不平滑。
 const SMOOTH_WINDOW_POINTS = 1;
 const SMOOTH_WINDOW_POINTS_PEAK = 13;
@@ -133,10 +141,15 @@ export function PingChart({
   const pingStats = data?.stats ?? EMPTY_PING_STATS;
   const { resolvedAppearance } = usePreferences();
   const { w, h, ref: chartSizeRef } = useResponsiveChartSize("wide");
-  const [hiddenTasks, setHiddenTasks] = useState<Set<number>>(new Set());
+  /**
+   * 选中的线路（和哪吒探针一个用法）：空 = 全部显示；点某条线路 = 只看它，再点别的线路是叠加上去，
+   * 再点已选中的是去掉，全去掉又回到全部显示。「清除」一键回到全部。
+   */
+  const [selectedTasks, setSelectedTasks] = useState<ReadonlySet<number>>(EMPTY_TASK_IDS);
   const [connectNulls, setConnectNulls] = useState(false);
   const [cutPeak, setCutPeak] = useState(false);
   const [showLoss, setShowLoss] = useState(true);
+  const [showLossArea, setShowLossArea] = useState(true);
   const [cursorLeft, setCursorLeft] = useState<number | null>(null);
   const chartRef = useRef<uPlot.AlignedData>([[]]);
   // tooltip 的 buildRows 只拿得到点位下标，丢包值走 ref 与图表数据同步。
@@ -185,6 +198,13 @@ export function PingChart({
     () => new Map(tasks.map((task, index) => [task.id, index] as const)),
     [tasks],
   );
+  const hiddenTasks = useMemo<ReadonlySet<number>>(
+    () =>
+      selectedTasks.size === 0
+        ? EMPTY_TASK_IDS
+        : new Set(tasks.filter((task) => !selectedTasks.has(task.id)).map((task) => task.id)),
+    [selectedTasks, tasks],
+  );
   const visibleTasks = useMemo(
     () => tasks.filter((task) => !hiddenTasks.has(task.id)),
     [hiddenTasks, tasks],
@@ -195,14 +215,17 @@ export function PingChart({
   );
 
   useEffect(() => {
-    setHiddenTasks(new Set());
+    setSelectedTasks(EMPTY_TASK_IDS);
   }, [uuid]);
 
+  // 线路表变了（站长删了某条线路）：丢掉已不存在的选中项，全丢光就回到全部显示。
   useEffect(() => {
-    setHiddenTasks((prev) => {
+    setSelectedTasks((prev) => {
+      if (prev.size === 0) return prev;
       const validTaskIds = new Set(tasks.map((task) => task.id));
       const next = new Set([...prev].filter((taskId) => validTaskIds.has(taskId)));
-      return next.size === prev.size ? prev : next;
+      if (next.size === prev.size) return prev;
+      return next.size === 0 ? EMPTY_TASK_IDS : next;
     });
   }, [tasks]);
 
@@ -291,6 +314,12 @@ export function PingChart({
   }, [cutPeak, data, sortedRecords, taskKeySet, taskKeys, tasks]);
 
   const chart = chartBundle?.data ?? null;
+  // 交给 uPlot 的数据：延迟在前（下标 1..n，提示框按这个取值），开了丢包叠加时各线路的丢包接在后面。
+  const plotData = useMemo<uPlot.AlignedData | null>(() => {
+    if (!chartBundle) return null;
+    if (!showLossArea) return chartBundle.data;
+    return [...chartBundle.data, ...chartBundle.loss] as uPlot.AlignedData;
+  }, [chartBundle, showLossArea]);
 
   // 只画当前可见的线路，和图例的显示/隐藏联动。
   const lossRows = useMemo<PingLossRow[]>(() => {
@@ -304,11 +333,11 @@ export function PingChart({
   }, [chartBundle, taskColors, taskIndexById, taskLabels, visibleTasks]);
 
   useEffect(() => {
-    if (chartBundle) {
-      chartRef.current = chartBundle.data;
+    if (chartBundle && plotData) {
+      chartRef.current = plotData;
       lossRef.current = chartBundle.loss;
     }
-  }, [chartBundle]);
+  }, [chartBundle, plotData]);
 
   const requestedXRange = useMemo(() => historyChartRangeSeconds(data), [data]);
   const coverageMeta = useMemo(() => {
@@ -367,6 +396,19 @@ export function PingChart({
     return [0, max + Math.max(5, max * 0.12)];
   }, [chart, tasks, visibleTaskIds]);
 
+  // 右侧丢包轴：按当前显示的线路里最高的丢包率留一点头，最低也给到 5%，免得 0.3% 的小抖动顶满整张图。
+  const lossRange = useMemo<[number, number]>(() => {
+    let max = 0;
+    if (chartBundle) {
+      for (const task of visibleTasks) {
+        for (const value of chartBundle.loss[taskIndexById.get(task.id) ?? -1] ?? []) {
+          if (typeof value === "number" && value > max) max = value;
+        }
+      }
+    }
+    return [0, Math.min(100, Math.max(5, Math.ceil(max * 1.15)))];
+  }, [chartBundle, taskIndexById, visibleTasks]);
+
   const baseOptions = useMemo<Omit<uPlot.Options, "width" | "height"> | null>(() => {
     if (!chart) return null;
     const { grid, text } = getAxisColors(isDark);
@@ -408,6 +450,7 @@ export function PingChart({
           ? { time: true, auto: false, range: () => requestedXRange }
           : { time: true },
         y: { auto: false, range: yRange },
+        loss: { auto: false, range: lossRange },
       },
       axes: [
         {
@@ -425,6 +468,20 @@ export function PingChart({
           size: Y_AXIS_SIZE,
           values: (_self, splits) => splits.map((value) => (value === 0 ? "" : `${Math.round(value)} ms`)),
         },
+        ...(showLossArea
+          ? [
+              {
+                scale: "loss",
+                side: 1,
+                stroke: text,
+                grid: { show: false },
+                ticks: { stroke: grid },
+                size: LOSS_AXIS_SIZE,
+                values: (_self: uPlot, splits: number[]) =>
+                  splits.map((value) => `${trimFixed(value, 1)}%`),
+              } satisfies uPlot.Axis,
+            ]
+          : []),
       ],
       series: [
         { label: "time" },
@@ -436,6 +493,25 @@ export function PingChart({
           show: !hiddenTasks.has(task.id),
           points: { show: false },
         })),
+        // 丢包面积：同色半透明，画在延迟线后面加进来的那几列上；悬停圆点用 class 在 CSS 里藏掉，
+        // 否则每条线路都会在底边多一个点。
+        ...(showLossArea
+          ? tasks.map((task, index) => {
+              const color = taskColors.get(task.id) ?? colorForSeries(index, tasks.length);
+              return {
+                label: `${taskLabels.get(task.id) ?? `任务 #${task.id}`} 丢包`,
+                scale: "loss",
+                class: "ping-loss-area",
+                stroke: color,
+                fill: color,
+                alpha: LOSS_AREA_ALPHA,
+                width: 1,
+                spanGaps: false,
+                show: !hiddenTasks.has(task.id),
+                points: { show: false },
+              } satisfies uPlot.Series;
+            })
+          : []),
       ],
       hooks: {
         init: [
@@ -458,7 +534,7 @@ export function PingChart({
         ],
       },
     };
-  }, [chart, connectNulls, hiddenTasks, hours, isDark, requestedXRange, taskColors, taskIndexById, taskLabels, tasks, visibleTasks, yRange]);
+  }, [chart, connectNulls, hiddenTasks, hours, isDark, lossRange, requestedXRange, showLossArea, taskColors, taskIndexById, taskLabels, tasks, visibleTasks, yRange]);
 
   const options = useMemo<uPlot.Options | null>(
     () => (baseOptions ? { ...baseOptions, width: w, height: h } : null),
@@ -525,18 +601,17 @@ export function PingChart({
     void refetchRecords();
   };
 
+  // 全部显示时点一条 = 只看这一条；之后点别的是叠加、点已选的是去掉（见 selectedTasks）。
   const toggleTask = (taskId: number) => {
-    setHiddenTasks((prev) => {
+    setSelectedTasks((prev) => {
       const next = new Set(prev);
       if (next.has(taskId)) next.delete(taskId);
       else next.add(taskId);
-      return next;
+      return next.size === 0 ? EMPTY_TASK_IDS : next;
     });
   };
 
-  const toggleAll = () => {
-    setHiddenTasks((prev) => (prev.size === 0 ? new Set(tasks.map((task) => task.id)) : new Set()));
-  };
+  const clearSelection = () => setSelectedTasks(EMPTY_TASK_IDS);
 
   if (isLoading) {
     return <InstanceChartLoading title="Ping 图表" />;
@@ -579,6 +654,12 @@ export function PingChart({
           title="在图表上方按线路显示丢包率色带：越红丢得越多，空缺表示该时段没有采样。不受削峰平滑影响。注意：查询超过 1 小时时，后端按后台设置的采样点数返回（可选 60/120/180/240），点数固定而区间不固定，所以区间越长采样越粗；持续一两分钟的短促丢包可能整段没被采到 —— 同一次丢包在 1 小时图里看得见、在 1 天图里消失就是这个原因，调大后台的采样点数可缓解。"
         />
         <SwitchToggle
+          label="丢包叠加"
+          active={showLossArea}
+          onToggle={() => setShowLossArea((value) => !value)}
+          title="把各线路的丢包率画成同色半透明面积，叠在延迟图里，对应右侧的百分比纵轴（和哪吒探针一个画法）。不受削峰平滑影响。"
+        />
+        <SwitchToggle
           label="削峰平滑"
           active={cutPeak}
           onToggle={() => setCutPeak((value) => !value)}
@@ -590,10 +671,17 @@ export function PingChart({
           onToggle={() => setConnectNulls((value) => !value)}
           title="关闭：如实显示中断/丢包断点；开启：跨过所有空缺连成完整曲线（更好看，但看不出掉线）。注：偶尔漏一两次采样的小空缺始终自动桥接，不受此开关影响。"
         />
-        <button type="button" className="instance-toggle-button" onClick={toggleAll}>
-          {hiddenTasks.size === 0 ? <EyeOff size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
-          {hiddenTasks.size === 0 ? "隐藏全部" : "显示全部"}
-        </button>
+        {selectedTasks.size > 0 && (
+          <button
+            type="button"
+            className="instance-toggle-button"
+            onClick={clearSelection}
+            title="取消选择，恢复显示全部线路"
+          >
+            <Eye size={14} aria-hidden />
+            清除 ({selectedTasks.size})
+          </button>
+        )}
         <button
           type="button"
           className="instance-toggle-button"
@@ -615,7 +703,7 @@ export function PingChart({
               type="button"
               className="instance-ping-task"
               data-visible={visible ? "true" : "false"}
-              aria-pressed={visible}
+              aria-pressed={selectedTasks.has(task.id)}
               onClick={() => toggleTask(task.id)}
               style={{ borderColor: visible ? task.color : "var(--border-subtle)" }}
               title={[
@@ -623,6 +711,11 @@ export function PingChart({
                 `当前 ${task.latest != null ? `${task.latest.toFixed(1)} ms` : "—"} | 均值 ${task.avg != null ? `${task.avg.toFixed(1)} ms` : "—"} | 丢包 ${task.loss.toFixed(1)}%`,
                 `p99 ${task.p99 != null ? `${task.p99.toFixed(0)} ms` : "—"} | 抖动 ${task.volatility != null ? task.volatility.toFixed(2) : "—"}`,
                 `min ${task.min != null ? `${task.min.toFixed(0)} ms` : "—"} | max ${task.max != null ? `${task.max.toFixed(0)} ms` : "—"} | 样本 ${task.total ?? 0} | 间隔 ${task.interval}s`,
+                selectedTasks.size === 0
+                  ? "点击只看这条线路，再点其他线路可叠加"
+                  : selectedTasks.has(task.id)
+                    ? "点击取消选择"
+                    : "点击叠加显示这条线路",
               ].join("\n")}
             >
               <span className="instance-ping-task-dot" style={{ background: task.color }} aria-hidden />
@@ -656,7 +749,7 @@ export function PingChart({
           rows={lossRows}
           chartWidth={w}
           gutter={Y_AXIS_SIZE + CHART_PADDING_LEFT}
-          rightPad={CHART_PADDING_RIGHT}
+          rightPad={CHART_PADDING_RIGHT + (showLossArea ? LOSS_AXIS_SIZE : 0)}
           isDark={isDark}
           cursorLeft={cursorLeft}
           rangeHours={hours}
@@ -664,12 +757,12 @@ export function PingChart({
       )}
 
       <div ref={chartSizeRef} className="instance-uplot-wrap is-large">
-        {chart && options && visibleTasks.length > 0 ? (
+        {plotData && options && visibleTasks.length > 0 ? (
           <>
             <UplotReact
-              key={`${uuid}-${hours}-${cutPeak ? "smooth" : "raw"}-${connectNulls ? "span" : "gap"}`}
+              key={`${uuid}-${hours}-${cutPeak ? "smooth" : "raw"}-${connectNulls ? "span" : "gap"}-${showLossArea ? "loss" : "noloss"}`}
               options={options}
-              data={chart}
+              data={plotData}
             />
             <ChartTooltip tooltip={tooltip} />
           </>

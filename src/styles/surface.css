@@ -2152,6 +2152,11 @@ body::after {
   opacity: 0.4;
 }
 
+/* 丢包面积没有自己的悬停圆点：延迟线上已经有一个，底边再排一行点只会添乱 */
+.instance-uplot-wrap .u-cursor-pt.ping-loss-area {
+  display: none;
+}
+
 .instance-empty {
   display: flex;
   min-height: 140px;
