@@ -5,7 +5,7 @@
 基于 [CFSM-Theme-LuminaPlus](https://github.com/volcano-1025/CFSM-Theme-LuminaPlus) 二次修改。
 
 界面与交互沿用 LuminaPlus：大 / 小 / 迷你 / 列表四种卡片、首页总览与分组筛选、
-资产统计、实例详情的负载与延迟图表（延迟图带丢包色带）；数据层全部改为
+资产统计、实例详情的负载与延迟图表（延迟图叠加丢包率）；数据层全部改为
 CF-Server-Monitor 的公开 API。
 
 ## 怎么用

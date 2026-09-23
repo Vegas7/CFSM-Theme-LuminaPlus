@@ -16,7 +16,6 @@ import {
   type ChartTooltipState,
 } from "./chartShared";
 import { ChartTooltip, SwitchToggle } from "./ChartParts";
-import { PingLossStrip, type PingLossRow } from "./PingLossStrip";
 import {
   cutPeakValues,
   detectTypicalIntervalSeconds,
@@ -107,13 +106,12 @@ export function summarizePingRecords(records: PingRecord[]) {
 const EMPTY_PING_STATS: PingTaskStats[] = [];
 const EMPTY_TASK_IDS: ReadonlySet<number> = new Set();
 const MAX_RENDER_POINTS = 160;
-// 纵轴槽位与左右内边距：丢包色带靠这三个常量与主图对齐，改一处必须改另一处。
 const Y_AXIS_SIZE = 64;
 const CHART_PADDING_LEFT = 2;
 const CHART_PADDING_RIGHT = 14;
 /**
  * 丢包叠加（和哪吒探针一个画法）：每条线路的丢包率画成同色半透明面积，挂在右侧的百分比纵轴上，
- * 和延迟折线在同一张图里。右轴占掉的宽度要同步给丢包色带（色带靠它对齐右边界）。
+ * 和延迟折线在同一张图里。原来图上方还有一条按线路分行的丢包色带，有了叠加之后重复，已去掉。
  */
 const LOSS_AXIS_SIZE = 44;
 const LOSS_AREA_ALPHA = 0.3;
@@ -148,9 +146,7 @@ export function PingChart({
   const [selectedTasks, setSelectedTasks] = useState<ReadonlySet<number>>(EMPTY_TASK_IDS);
   const [connectNulls, setConnectNulls] = useState(false);
   const [cutPeak, setCutPeak] = useState(false);
-  const [showLoss, setShowLoss] = useState(true);
   const [showLossArea, setShowLossArea] = useState(true);
-  const [cursorLeft, setCursorLeft] = useState<number | null>(null);
   const chartRef = useRef<uPlot.AlignedData>([[]]);
   // tooltip 的 buildRows 只拿得到点位下标，丢包值走 ref 与图表数据同步。
   const lossRef = useRef<Array<Array<number | null>>>([]);
@@ -305,7 +301,7 @@ export function PingChart({
 
     return {
       data: [reduced.times, ...smoothed] as uPlot.AlignedData,
-      // 归到与折线同一套时间格上，色带才能和曲线逐像素对齐。削峰/平滑只作用于延迟，
+      // 归到与折线同一套时间格上，丢包面积才能和曲线逐点对齐。削峰/平滑只作用于延迟，
       // 丢包始终是真实值。
       loss: taskKeys.map((key) =>
         bucketPingLoss(lossSamples.get(key) ?? [], reduced.times),
@@ -320,17 +316,6 @@ export function PingChart({
     if (!showLossArea) return chartBundle.data;
     return [...chartBundle.data, ...chartBundle.loss] as uPlot.AlignedData;
   }, [chartBundle, showLossArea]);
-
-  // 只画当前可见的线路，和图例的显示/隐藏联动。
-  const lossRows = useMemo<PingLossRow[]>(() => {
-    if (!chartBundle) return [];
-    return visibleTasks.map((task) => ({
-      id: task.id,
-      label: taskLabels.get(task.id) ?? `任务 #${task.id}`,
-      color: taskColors.get(task.id),
-      loss: chartBundle.loss[taskIndexById.get(task.id) ?? 0] ?? [],
-    }));
-  }, [chartBundle, taskColors, taskIndexById, taskLabels, visibleTasks]);
 
   useEffect(() => {
     if (chartBundle && plotData) {
@@ -522,16 +507,7 @@ export function PingChart({
           tooltipHooks.onInit,
         ],
         destroy: [tooltipHooks.onDestroy],
-        setCursor: [
-          tooltipHooks.onSetCursor,
-          // 把游标位置同步给上方的丢包色带，让那根竖线一路贯穿到色带里。
-          // 相同像素值时 React 会自行跳过重渲，不必额外节流。
-          (u) => {
-            const left = u.cursor.left;
-            const inside = left != null && left >= 0 && u.cursor.idx != null;
-            setCursorLeft(inside ? Math.round(left) : null);
-          },
-        ],
+        setCursor: [tooltipHooks.onSetCursor],
       },
     };
   }, [chart, connectNulls, hiddenTasks, hours, isDark, lossRange, requestedXRange, showLossArea, taskColors, taskIndexById, taskLabels, tasks, visibleTasks, yRange]);
@@ -648,16 +624,10 @@ export function PingChart({
     <InstancePanel title="Ping 图表" description={panelDescription}>
       <div className="instance-ping-toolbar">
         <SwitchToggle
-          label="丢包色带"
-          active={showLoss}
-          onToggle={() => setShowLoss((value) => !value)}
-          title="在图表上方按线路显示丢包率色带：越红丢得越多，空缺表示该时段没有采样。不受削峰平滑影响。注意：查询超过 1 小时时，后端按后台设置的采样点数返回（可选 60/120/180/240），点数固定而区间不固定，所以区间越长采样越粗；持续一两分钟的短促丢包可能整段没被采到 —— 同一次丢包在 1 小时图里看得见、在 1 天图里消失就是这个原因，调大后台的采样点数可缓解。"
-        />
-        <SwitchToggle
           label="丢包叠加"
           active={showLossArea}
           onToggle={() => setShowLossArea((value) => !value)}
-          title="把各线路的丢包率画成同色半透明面积，叠在延迟图里，对应右侧的百分比纵轴（和哪吒探针一个画法）。不受削峰平滑影响。"
+          title="把各线路的丢包率画成同色半透明面积，叠在延迟图里，对应右侧的百分比纵轴（和哪吒探针一个画法）。不受削峰平滑影响。注意：查询超过 1 小时时，后端按后台设置的采样点数返回（可选 60/120/180/240），点数固定而区间不固定，所以区间越长采样越粗；持续一两分钟的短促丢包可能整段没被采到 —— 同一次丢包在 1 小时图里看得见、在 1 天图里消失就是这个原因，调大后台的采样点数可缓解。"
         />
         <SwitchToggle
           label="削峰平滑"
@@ -741,20 +711,6 @@ export function PingChart({
           );
         })}
       </div>
-
-      {showLoss && chart && lossRows.length > 0 && (
-        <PingLossStrip
-          times={chart[0] as number[]}
-          xRange={requestedXRange}
-          rows={lossRows}
-          chartWidth={w}
-          gutter={Y_AXIS_SIZE + CHART_PADDING_LEFT}
-          rightPad={CHART_PADDING_RIGHT + (showLossArea ? LOSS_AXIS_SIZE : 0)}
-          isDark={isDark}
-          cursorLeft={cursorLeft}
-          rangeHours={hours}
-        />
-      )}
 
       <div ref={chartSizeRef} className="instance-uplot-wrap is-large">
         {plotData && options && visibleTasks.length > 0 ? (
