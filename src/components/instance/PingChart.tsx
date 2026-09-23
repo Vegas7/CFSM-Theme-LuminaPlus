@@ -623,6 +623,19 @@ export function PingChart({
   return (
     <InstancePanel title="Ping 图表" description={panelDescription}>
       <div className="instance-ping-toolbar">
+        {/* 放在最前、靠左（CSS 里 margin-right: auto）：它是点了线路才冒出来的，放在右边那组开关中间
+            会把整排往左挤一下。 */}
+        {selectedTasks.size > 0 && (
+          <button
+            type="button"
+            className="instance-toggle-button instance-ping-clear"
+            onClick={clearSelection}
+            title="取消选择，恢复显示全部线路"
+          >
+            <Eye size={14} aria-hidden />
+            清除 ({selectedTasks.size})
+          </button>
+        )}
         <SwitchToggle
           label="丢包叠加"
           active={showLossArea}
@@ -641,17 +654,6 @@ export function PingChart({
           onToggle={() => setConnectNulls((value) => !value)}
           title="关闭：如实显示中断/丢包断点；开启：跨过所有空缺连成完整曲线（更好看，但看不出掉线）。注：偶尔漏一两次采样的小空缺始终自动桥接，不受此开关影响。"
         />
-        {selectedTasks.size > 0 && (
-          <button
-            type="button"
-            className="instance-toggle-button"
-            onClick={clearSelection}
-            title="取消选择，恢复显示全部线路"
-          >
-            <Eye size={14} aria-hidden />
-            清除 ({selectedTasks.size})
-          </button>
-        )}
         <button
           type="button"
           className="instance-toggle-button"

@@ -2011,6 +2011,11 @@ body::after {
   margin-bottom: 12px;
 }
 
+/* 「清除 (n)」贴在最左边，右边那组开关原地不动 */
+.instance-ping-clear {
+  margin-right: auto;
+}
+
 .instance-ping-tasks {
   display: flex;
   flex-wrap: wrap;
@@ -2127,6 +2132,12 @@ body::after {
     justify-content: flex-start;
     overflow-x: auto;
     padding-bottom: 2px;
+  }
+
+  /* 窄屏整排靠左排、横向滚动：放最前会把后面全推右，改排到最后 */
+  .instance-ping-clear {
+    order: 1;
+    margin-right: 0;
   }
 
   .instance-chart-meta {
