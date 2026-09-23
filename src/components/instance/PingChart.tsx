@@ -136,6 +136,7 @@ export function PingChart({
     isError,
     isFetching,
     isLoading,
+    isPlaceholderData,
     refetch: refetchRecords,
   } = usePingRecords(uuid, hours, active);
   // stats 随 records 同一次请求返回(getPingRecords includeStats),不再单独发起查询。
@@ -594,7 +595,8 @@ export function PingChart({
     <InstancePanel
       title="Ping 图表"
       controls={controls}
-      className="instance-chart-panel"
+      // 换档后新数据回来之前显示的是上一档的图（见 keepPreviousRangeData），压暗一点表示正在换。
+      className={isPlaceholderData ? "instance-chart-panel is-switching" : "instance-chart-panel"}
       aside={
         // 和负载图一样并进标题行右侧，省掉单独一行工具栏。「清除 (n)」是点了线路才冒出来的，放在这组
         // 最前面：这组靠右对齐，往左边多长一个按钮，右边的开关不会挪位。

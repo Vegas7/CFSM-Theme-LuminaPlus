@@ -1874,6 +1874,19 @@ body::after {
   align-items: center;
 }
 
+/* 换时间段、新数据还没回来：先接着显示上一档的图，压暗表示正在换（不缩成转圈，页面高度不变、不跳） */
+.instance-chart-grid,
+.instance-chart-panel .instance-ping-tasks,
+.instance-chart-panel .instance-uplot-wrap {
+  transition: opacity 160ms ease;
+}
+
+.instance-chart-panel.is-switching .instance-chart-grid,
+.instance-chart-panel.is-switching .instance-ping-tasks,
+.instance-chart-panel.is-switching .instance-uplot-wrap {
+  opacity: 0.5;
+}
+
 .instance-chart-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
