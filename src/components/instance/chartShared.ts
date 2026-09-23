@@ -186,11 +186,6 @@ function formatTooltipTime(timestampSeconds: number, rangeHours = 0): string {
   return `${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
-export function formatChartCoverageTime(timestampSeconds: number): string {
-  const parts = getDateParts(timestampSeconds);
-  return `${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
-}
-
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }

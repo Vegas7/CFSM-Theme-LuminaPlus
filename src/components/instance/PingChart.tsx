@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import UplotReact from "uplot-react";
 import type uPlot from "uplot";
 import { Eye, RefreshCw } from "lucide-react";
 import { usePingRecords } from "@/hooks/useRecords";
 import { useCarrierNames } from "@/hooks/usePublicConfig";
 import { carrierTaskName } from "@/services/cfsm/mappers";
-import { InstancePanel, InstanceChartLoading } from "./InstancePanel";
+import { InstancePanel, InstanceChartLoadingBody } from "./InstancePanel";
 import {
   buildChartTooltipHooks,
   colorForSeries,
@@ -25,7 +25,7 @@ import {
 } from "./chartData";
 import { latencyHeatColor, lossHeatColor } from "@/utils/metricTone";
 import { trimFixed } from "@/utils/format";
-import { historyChartRangeSeconds, historyCoverageLabel } from "@/utils/historyRange";
+import { historyChartRangeSeconds } from "@/utils/historyRange";
 import {
   bucketPingLoss,
   formatPingTooltipValue,
@@ -123,10 +123,13 @@ export function PingChart({
   uuid,
   hours,
   active = true,
+  controls,
 }: {
   uuid: string;
   hours: number;
   active?: boolean;
+  /** 放在面板标题区中间的时间段选择条（由详情页传进来）；加载中、出错、没数据时也照样显示。 */
+  controls?: ReactNode;
 }) {
   const {
     data,
@@ -324,44 +327,6 @@ export function PingChart({
   }, [chartBundle, plotData]);
 
   const requestedXRange = useMemo(() => historyChartRangeSeconds(data), [data]);
-  const coverageMeta = useMemo(() => {
-    if (!data) return null;
-    const taskIntervals = tasks
-      .map((task) => task.interval)
-      .filter((value) => Number.isFinite(value) && value > 0);
-    return {
-      rangeStartMs: data.rangeStartMs,
-      rangeEndMs: data.rangeEndMs,
-      intervalSeconds:
-        data.intervalSeconds ??
-        (taskIntervals.length > 0 ? Math.min(...taskIntervals) : undefined),
-    };
-  }, [data, tasks]);
-  const coverageLabel = useMemo(() => {
-    const times = chart?.[0];
-    if (!times?.length) return null;
-    return historyCoverageLabel(coverageMeta, times[0], times[times.length - 1]);
-  }, [chart, coverageMeta]);
-  // 查询超过 1 小时时，后端按后台设置的采样点数返回（「查询超过 1 小时时返回的采样点数」，
-  // 可选 60/120/180/240）。点数固定而区间不固定，于是区间越长采样越粗 —— 240 点时 12 小时
-  // 约 3 分钟一个、1 天约 6 分钟一个。把实际分辨率写出来，读者才明白为什么同一段短促丢包
-  // 在短区间看得到、长区间就没了。
-  const samplingLabel = useMemo(() => {
-    if (sortedRecords.length < 2) return null;
-    const seconds = detectTypicalIntervalSeconds(
-      sortedRecords.map(({ time }) => time),
-      0,
-    );
-    if (!Number.isFinite(seconds) || seconds <= 0) return null;
-    const text =
-      seconds >= 60
-        ? `${Number((seconds / 60).toFixed(seconds % 60 === 0 ? 0 : 1))} 分钟`
-        : `${Math.round(seconds)} 秒`;
-    return `每 ${text}一个采样点`;
-  }, [sortedRecords]);
-  const panelDescription =
-    [coverageLabel, samplingLabel].filter(Boolean).join(" · ") || undefined;
-
   // 纵轴恒定从 0 起：截取中间一段会把 210ms 和 240ms 画成天差地别，看不出真实量级。
   const yRange = useMemo<[number | null, number | null]>(() => {
     if (!chart) return [null, null];
@@ -591,12 +556,16 @@ export function PingChart({
   const clearSelection = () => setSelectedTasks(EMPTY_TASK_IDS);
 
   if (isLoading) {
-    return <InstanceChartLoading title="Ping 图表" />;
+    return (
+      <InstancePanel title="Ping 图表" controls={controls}>
+        <InstanceChartLoadingBody />
+      </InstancePanel>
+    );
   }
 
   if (isError && !data?.records.length) {
     return (
-      <InstancePanel title="Ping 图表">
+      <InstancePanel title="Ping 图表" controls={controls}>
         <div className="instance-empty">
           <span>延迟历史加载失败</span>
           <button
@@ -615,52 +584,57 @@ export function PingChart({
 
   if (!data?.records.length) {
     return (
-      <InstancePanel title="Ping 图表">
+      <InstancePanel title="Ping 图表" controls={controls}>
         <div className="instance-empty">暂无延迟记录</div>
       </InstancePanel>
     );
   }
 
   return (
-    <InstancePanel title="Ping 图表" description={panelDescription}>
-      <div className="instance-ping-toolbar">
-        {/* 放在最前、靠左（CSS 里 margin-right: auto）：它是点了线路才冒出来的，放在右边那组开关中间
-            会把整排往左挤一下。 */}
-        {selectedTasks.size > 0 && (
+    <InstancePanel
+      title="Ping 图表"
+      controls={controls}
+      className="instance-chart-panel"
+      aside={
+        // 和负载图一样并进标题行右侧，省掉单独一行工具栏。「清除 (n)」是点了线路才冒出来的，放在这组
+        // 最前面：这组靠右对齐，往左边多长一个按钮，右边的开关不会挪位。
+        <div className="instance-chart-headmeta">
+          {selectedTasks.size > 0 && (
+            <button
+              type="button"
+              className="instance-toggle-button instance-ping-clear"
+              onClick={clearSelection}
+              title="取消选择，恢复显示全部线路"
+            >
+              <Eye size={14} aria-hidden />
+              清除 ({selectedTasks.size})
+            </button>
+          )}
+          <SwitchToggle
+            label="丢包叠加"
+            active={showLossArea}
+            onToggle={() => setShowLossArea((value) => !value)}
+            title="把各线路的丢包率画成同色半透明面积，叠在延迟图里，对应右侧的百分比纵轴（和哪吒探针一个画法）。不受削峰平滑影响。注意：查询超过 1 小时时，后端按后台设置的采样点数返回（可选 60/120/180/240），点数固定而区间不固定，所以区间越长采样越粗；持续一两分钟的短促丢包可能整段没被采到 —— 同一次丢包在 1 小时图里看得见、在 1 天图里消失就是这个原因，调大后台的采样点数可缓解。"
+          />
+          <SwitchToggle
+            label="削峰平滑"
+            active={cutPeak}
+            onToggle={() => setCutPeak((value) => !value)}
+            title="对尖峰值做轻度平滑，仅影响图线显示"
+          />
           <button
             type="button"
-            className="instance-toggle-button instance-ping-clear"
-            onClick={clearSelection}
-            title="取消选择，恢复显示全部线路"
+            className="instance-toggle-button"
+            onClick={refetchAll}
+            disabled={isFetching}
+            aria-busy={isFetching}
           >
-            <Eye size={14} aria-hidden />
-            清除 ({selectedTasks.size})
+            <RefreshCw size={14} aria-hidden />
+            {isFetching ? "刷新中" : isError ? "刷新失败，重试" : "刷新"}
           </button>
-        )}
-        <SwitchToggle
-          label="丢包叠加"
-          active={showLossArea}
-          onToggle={() => setShowLossArea((value) => !value)}
-          title="把各线路的丢包率画成同色半透明面积，叠在延迟图里，对应右侧的百分比纵轴（和哪吒探针一个画法）。不受削峰平滑影响。注意：查询超过 1 小时时，后端按后台设置的采样点数返回（可选 60/120/180/240），点数固定而区间不固定，所以区间越长采样越粗；持续一两分钟的短促丢包可能整段没被采到 —— 同一次丢包在 1 小时图里看得见、在 1 天图里消失就是这个原因，调大后台的采样点数可缓解。"
-        />
-        <SwitchToggle
-          label="削峰平滑"
-          active={cutPeak}
-          onToggle={() => setCutPeak((value) => !value)}
-          title="对尖峰值做轻度平滑，仅影响图线显示"
-        />
-        <button
-          type="button"
-          className="instance-toggle-button"
-          onClick={refetchAll}
-          disabled={isFetching}
-          aria-busy={isFetching}
-        >
-          <RefreshCw size={14} aria-hidden />
-          {isFetching ? "刷新中" : isError ? "刷新失败，重试" : "刷新"}
-        </button>
-      </div>
-
+        </div>
+      }
+    >
       <div className="instance-ping-tasks">
         {taskStats.map((task) => {
           const visible = !hiddenTasks.has(task.id);

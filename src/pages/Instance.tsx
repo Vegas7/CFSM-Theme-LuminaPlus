@@ -5,6 +5,7 @@ import "uplot/dist/uPlot.min.css";
 import { InstanceDetails } from "@/components/instance/InstanceDetails";
 import { PingChart } from "@/components/instance/PingChart";
 import { LoadChart } from "@/components/instance/LoadChart";
+import { RangeSelector } from "@/components/instance/RangeSelector";
 import { Spinner } from "@/components/ui/Spinner";
 import {
   buildLoadTimeRangeOptions,
@@ -19,33 +20,6 @@ import { ANONYMOUS_MAX_HISTORY_HOURS } from "@/services/api";
 const DEFAULT_PING_HOURS = 1;
 /** `/api/history/all` 的 hours 上限。 */
 const MAX_HISTORY_HOURS = 168;
-type TimeRangeOption = ReturnType<typeof buildLoadTimeRangeOptions>[number];
-
-function RangeSelector({
-  ranges,
-  value,
-  onChange,
-}: {
-  ranges: TimeRangeOption[];
-  value: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <div className="instance-segmented is-scrollable">
-      {ranges.map((range) => (
-        <button
-          key={range.value}
-          type="button"
-          data-active={value === range.value ? "true" : "false"}
-          aria-pressed={value === range.value}
-          onClick={() => onChange(range.value)}
-        >
-          {range.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 export function Instance() {
   const { uuid } = useParams<{ uuid: string }>();
@@ -55,10 +29,9 @@ export function Instance() {
   const storeStatus = useNodeStoreStatus(Boolean(uuid));
   // 详情页只订阅这一台的实时推送（后端文档：详情页不要订阅全量再在前端过滤）。
   useRealtimeFocus(uuid);
-  const [chartType, setChartType] = useState<"load" | "ping">("load");
   const [loadHours, setLoadHours] = useState(0);
   const [pingHours, setPingHours] = useState(DEFAULT_PING_HOURS);
-  const chartControlsRef = useRef<HTMLDivElement | null>(null);
+  const chartsRef = useRef<HTMLDivElement | null>(null);
 
   // 后端最长支持 7 天；未登录访客查询超过 24 小时会被拒绝，所以直接不显示更长的档位。
   const maxHistoryHours = me?.logged_in
@@ -77,7 +50,7 @@ export function Instance() {
 
   const alignCharts = useCallback(() => {
     const frame = window.requestAnimationFrame(() => {
-      const element = chartControlsRef.current;
+      const element = chartsRef.current;
       if (!element) return;
       const rect = element.getBoundingClientRect();
       if (rect.top >= 0 && rect.top < window.innerHeight) return;
@@ -101,12 +74,6 @@ export function Instance() {
       );
     }
   }, [pingHours, pingRanges]);
-
-  useEffect(() => {
-    if (!showPingChart && chartType === "ping") {
-      setChartType("load");
-    }
-  }, [chartType, showPingChart]);
 
   if (!uuid) return null;
 
@@ -148,67 +115,35 @@ export function Instance() {
         返回
       </Link>
       <InstanceDetails uuid={uuid} onNodeReady={alignCharts} />
-      <div ref={chartControlsRef} className="instance-chart-controls">
-        <div className="instance-segmented">
-          <button
-            type="button"
-            data-active={chartType === "load" ? "true" : "false"}
-            aria-pressed={chartType === "load"}
-            onClick={() => {
-              startTransition(() => setChartType("load"));
-            }}
-          >
-            负载
-          </button>
-          {showPingChart && (
-            <button
-              type="button"
-              data-active={chartType === "ping" ? "true" : "false"}
-              aria-pressed={chartType === "ping"}
-              onClick={() => {
-                startTransition(() => setChartType("ping"));
-              }}
-            >
-              Ping
-            </button>
-          )}
-        </div>
-        {chartType === "load" && (
-          <RangeSelector
-            ranges={loadRanges}
-            value={loadHours}
-            onChange={(value) => startTransition(() => setLoadHours(value))}
-          />
-        )}
-        {chartType === "ping" && showPingChart && (
-          <RangeSelector
-            ranges={pingRanges}
-            value={pingHours}
-            onChange={(value) => startTransition(() => setPingHours(value))}
-          />
-        )}
-      </div>
-      <div className="instance-chart-stage">
-        <div
-          className="instance-chart-view"
-          hidden={chartType !== "load"}
-          aria-hidden={chartType !== "load"}
-        >
-          <LoadChart uuid={uuid} hours={loadHours} active={chartType === "load"} />
-        </div>
-        <div
-          className="instance-chart-view"
-          hidden={chartType !== "ping"}
-          aria-hidden={chartType !== "ping"}
-        >
-          {showPingChart ? (
-            <PingChart
-              uuid={uuid}
-              hours={pingHours}
-              active={chartType === "ping"}
+      {/* 负载在上、Ping 在下，同一页直接看，不再分标签切换。各自的时间段选择条放在各自面板的标题区中间，
+          两张图的档位互不影响。 */}
+      <div ref={chartsRef} className="instance-chart-stack">
+        <LoadChart
+          uuid={uuid}
+          hours={loadHours}
+          controls={
+            <RangeSelector
+              label="负载图表时间段"
+              ranges={loadRanges}
+              value={loadHours}
+              onChange={(value) => startTransition(() => setLoadHours(value))}
             />
-          ) : null}
-        </div>
+          }
+        />
+        {showPingChart && (
+          <PingChart
+            uuid={uuid}
+            hours={pingHours}
+            controls={
+              <RangeSelector
+                label="Ping 图表时间段"
+                ranges={pingRanges}
+                value={pingHours}
+                onChange={(value) => startTransition(() => setPingHours(value))}
+              />
+            }
+          />
+        )}
       </div>
     </div>
   );

@@ -13,12 +13,11 @@ import uPlot from "uplot";
 import { ArrowDown, ArrowUp, Cpu, Gauge, HardDrive, MemoryStick, Network, RefreshCw, Workflow } from "lucide-react";
 import { useLoadRecords } from "@/hooks/useRecords";
 import { useNodeMeta, useNodeMetrics } from "@/hooks/useNode";
-import { InstancePanel, InstanceChartLoading } from "./InstancePanel";
+import { InstancePanel, InstanceChartLoadingBody } from "./InstancePanel";
 import {
   buildChartTooltipHooks,
   CHART_PALETTE,
   createTimeAxisFormatter,
-  formatChartCoverageTime,
   getAxisColors,
   toChartSeconds,
   useResponsiveChartSize,
@@ -33,7 +32,7 @@ import {
   mergeHistoryWithLivePoints,
 } from "./chartData";
 import { formatByteRateLabel, formatBytes, formatTrafficRateLabel } from "@/utils/format";
-import { historyChartRangeSeconds, historyCoverageLabel } from "@/utils/historyRange";
+import { historyChartRangeSeconds } from "@/utils/historyRange";
 import { resolveLoadRecordTotals } from "@/utils/loadMetrics";
 import { usePreferences } from "@/hooks/usePreferences";
 import type { LoadRecord, NodeMetrics } from "@/types/cfsm";
@@ -485,10 +484,13 @@ export function LoadChart({
   uuid,
   hours,
   active = true,
+  controls,
 }: {
   uuid: string;
   hours: number;
   active?: boolean;
+  /** 放在面板标题区中间的时间段选择条（由详情页传进来）；加载中、出错、没数据时也照样显示。 */
+  controls?: ReactNode;
 }) {
   const queryHours = hours === 0 ? REALTIME_QUERY_HOURS : hours;
   const { data, isError, isFetching, isLoading, refetch } = useLoadRecords(
@@ -642,16 +644,6 @@ export function LoadChart({
       : latestHistoryRecord && latestHistoryTotals
         ? `${formatBytes(latestHistoryRecord.disk)} / ${formatBytes(latestHistoryTotals.diskTotal)}`
         : "—";
-  const sourceRecordCount = historyRecords.length;
-  const wasDownsampled = !isRealtime && sourceRecordCount > getHistoryRenderLimit(hours);
-  const sampleSummary = isRealtime
-    ? `${points.length} 个点`
-    : wasDownsampled
-      ? `${points.length} / ${sourceRecordCount} 个点`
-      : `${points.length} 个点`;
-  const coverageSummary = points.length
-    ? `${formatChartCoverageTime(points[0].time)} - ${formatChartCoverageTime(points[points.length - 1].time)}`
-    : "—";
   const lastPointTime = points[points.length - 1]?.time;
   const requestedXRange = useMemo(() => {
     if (isRealtime) return null;
@@ -662,21 +654,18 @@ export function LoadChart({
       ? ([range[0], lastPointTime] as [number, number])
       : range;
   }, [data, isRealtime, lastPointTime]);
-  const coverageLabel = useMemo(
-    () =>
-      isRealtime
-        ? null
-        : historyCoverageLabel(data, points[0]?.time, points[points.length - 1]?.time),
-    [data, isRealtime, points],
-  );
 
   if (isLoading) {
-    return <InstanceChartLoading title="负载图表" />;
+    return (
+      <InstancePanel title="负载图表" controls={controls}>
+        <InstanceChartLoadingBody />
+      </InstancePanel>
+    );
   }
 
   if (isError && !points.length) {
     return (
-      <InstancePanel title="负载图表">
+      <InstancePanel title="负载图表" controls={controls}>
         <div className="instance-empty">
           <span>负载历史加载失败</span>
           <button
@@ -695,7 +684,7 @@ export function LoadChart({
 
   if (!points.length) {
     return (
-      <InstancePanel title="负载图表">
+      <InstancePanel title="负载图表" controls={controls}>
         <div className="instance-empty">暂无负载历史数据</div>
       </InstancePanel>
     );
@@ -704,16 +693,9 @@ export function LoadChart({
   return (
     <InstancePanel
       title="负载图表"
+      controls={controls}
       aside={
         <div className="instance-chart-headmeta">
-          <div className="instance-chart-meta" aria-label="图表数据范围">
-            <span title={coverageSummary}>
-              <strong>{coverageLabel ?? `覆盖 ${coverageSummary}`}</strong>
-            </span>
-            <span>
-              采样 <strong>{sampleSummary}</strong>
-            </span>
-          </div>
           <button
             type="button"
             className="instance-toggle-button"
