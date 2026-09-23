@@ -178,17 +178,12 @@ export function createTimeAxisFormatter(rangeHours: number) {
     splits.map((value) => formatAxisTime(value, rangeHours));
 }
 
-export function formatTooltipTime(timestampSeconds: number, rangeHours = 0): string {
+function formatTooltipTime(timestampSeconds: number, rangeHours = 0): string {
   const parts = getDateParts(timestampSeconds);
   if (rangeHours >= 24) {
     return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
   }
   return `${parts.hour}:${parts.minute}:${parts.second}`;
-}
-
-export function formatChartCoverageTime(timestampSeconds: number): string {
-  const parts = getDateParts(timestampSeconds);
-  return `${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 function clamp(value: number, min: number, max: number) {

@@ -17,7 +17,7 @@ function historyTimeMs(value: HistoryTimeValue) {
   return Date.parse(value);
 }
 
-/** 从旧记录接口的时间戳推导典型采样周期，供覆盖率和断点判断补齐边缘区间。 */
+/** 从旧记录接口的时间戳推导典型采样周期，供断点判断补齐边缘区间。 */
 export function inferHistoryIntervalSeconds(
   records: Array<{ time: HistoryTimeValue }>,
 ) {
@@ -45,40 +45,4 @@ export function historyChartRangeSeconds(
   const start = (meta?.rangeStartMs ?? 0) / 1000;
   const end = (meta?.rangeEndMs ?? 0) / 1000;
   return end > start ? [start, end] : null;
-}
-
-function formatDuration(ms: number) {
-  const hours = ms / (60 * 60 * 1000);
-  if (hours >= 24) {
-    const days = hours / 24;
-    return `${Number(days.toFixed(1))} 天`;
-  }
-  if (hours >= 1) {
-    return `${Number(hours.toFixed(1))} 小时`;
-  }
-  const minutes = Math.max(1, Math.round(ms / 60_000));
-  return `${minutes} 分钟`;
-}
-
-export function historyCoverageLabel(
-  meta: HistoryRangeMeta | null | undefined,
-  actualStartSeconds: number | null | undefined,
-  actualEndSeconds: number | null | undefined,
-) {
-  const range = historyChartRangeSeconds(meta);
-  if (!range || !finitePositive(actualStartSeconds) || !finitePositive(actualEndSeconds)) {
-    return null;
-  }
-  if ((actualEndSeconds ?? 0) < (actualStartSeconds ?? 0)) return null;
-
-  const requestedMs = (range[1] - range[0]) * 1000;
-  const intervalMs = Math.max(0, meta?.intervalSeconds ?? 0) * 1000;
-  const actualMs = Math.min(
-    requestedMs,
-    Math.max(intervalMs, ((actualEndSeconds ?? 0) - (actualStartSeconds ?? 0)) * 1000 + intervalMs),
-  );
-  const ratio = requestedMs > 0 ? actualMs / requestedMs : 0;
-  return ratio >= 0.98
-    ? `覆盖完整 ${formatDuration(requestedMs)}`
-    : `实际覆盖 ${formatDuration(actualMs)} / ${formatDuration(requestedMs)}`;
 }

@@ -1304,6 +1304,35 @@ body::after {
   color: var(--text-tertiary);
 }
 
+/* 标题区中间放了控件（图表的时间段选择条）：三栏，标题靠左、控件居中、右侧信息靠右。 */
+.instance-panel-header.has-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.instance-panel-controls {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.instance-panel-header.has-controls .instance-panel-aside {
+  justify-self: end;
+}
+
+/* 中等宽度三栏挤不下（负载图右边还有「覆盖 / 采样 / 刷新」）：选择条换到第二行、仍居中 */
+@media (max-width: 1100px) {
+  .instance-panel-header.has-controls {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .instance-panel-header.has-controls .instance-panel-controls {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
 /* 详情页标题旁的快速切换服务器下拉 */
 .instance-switcher {
   position: relative;
@@ -1677,22 +1706,12 @@ body::after {
   font-size: 12px;
 }
 
-.instance-chart-controls {
+/* 详情页图表：负载在上、Ping 在下，同一页直接看（原来是标签切换） */
+.instance-chart-stack {
   display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.instance-chart-stage {
-  width: 100%;
-  min-height: 560px;
-}
-
-.instance-chart-view[hidden] {
-  display: none !important;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
 }
 
 .instance-segmented {
@@ -1708,6 +1727,38 @@ body::after {
 
 .instance-segmented.is-scrollable {
   overflow-x: auto;
+}
+
+/* 选中高亮是单独一块底色，滑到选中的按钮下面（见 RangeSelector）。按钮自己不再画底色，叠在它上面。 */
+.instance-segmented.has-indicator {
+  position: relative;
+  isolation: isolate;
+}
+
+.instance-segmented-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: -1;
+  border-radius: 10px;
+  background: var(--hover-bg);
+  pointer-events: none;
+}
+
+.instance-segmented-indicator.is-animated {
+  transition:
+    transform 280ms cubic-bezier(0.32, 0.72, 0, 1),
+    width 280ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.instance-segmented.has-indicator button[data-active="true"] {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .instance-segmented-indicator.is-animated {
+    transition: none;
+  }
 }
 
 /* 要一眼看清「现在是哪一种」的分段控件（首页延迟的单线路 / 多线路、默认线路都用它）：
@@ -1810,33 +1861,7 @@ body::after {
   background: color-mix(in srgb, white 84%, var(--progress-cpu) 16%);
 }
 
-.instance-chart-meta {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  gap: 8px;
-  color: var(--text-tertiary);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.instance-chart-meta span {
-  display: inline-flex;
-  min-height: 28px;
-  align-items: center;
-  gap: 5px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-elev) 84%, transparent);
-  padding: 0 10px;
-}
-
-.instance-chart-meta strong {
-  color: var(--text-primary);
-  font-weight: 700;
-}
-
-/* 把覆盖/采样/断点连线/刷新并入标题行右侧，省掉单独一行工具栏 */
+/* 图表的开关、刷新并入标题行右侧，省掉单独一行工具栏（负载图、Ping 图同一套） */
 .instance-chart-headmeta {
   display: flex;
   flex-wrap: wrap;
@@ -2003,105 +2028,10 @@ body::after {
   border-radius: 999px;
 }
 
-.instance-ping-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
 .instance-ping-tasks {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-/* 丢包色带：左槽位宽度由 JS 传入，与主图 Y 轴刻度同宽，保证横轴逐像素对齐 */
-.ping-loss-strip {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  margin: 10px 0 0;
-}
-
-/* 与主图 uPlot 游标同款的虚线，纵向贯穿整条色带。
-   向下多伸 10px 跨过 uPlot 的顶部内边距（options.padding 的第一个值），
-   与主图那根游标接成一条完整的线 */
-.ping-loss-cursor {
-  position: absolute;
-  top: 0;
-  bottom: -10px;
-  width: 0;
-  border-right: 1px dashed #607d8b;
-  pointer-events: none;
-}
-
-/* 色带紧贴图表：中间留白会把游标虚线切成两截 */
-.ping-loss-strip + .instance-uplot-wrap.is-large {
-  margin-top: 0;
-}
-
-.ping-loss-row {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  min-width: 0;
-  /* 行高与标签字号解耦：否则调一次字号就把整条色带的疏密也改了 */
-  height: 10px;
-}
-
-.ping-loss-label {
-  flex: none;
-  box-sizing: border-box;
-  padding-right: 8px;
-  font-size: 8px;
-  /* 行高压到 1：默认 1.5 的行盒比 6px 的色带高得多，行距看着全是文字撑出来的 */
-  line-height: 1;
-  color: var(--text-secondary);
-  text-align: right;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.ping-loss-row canvas {
-  display: block;
-  flex: none;
-  border-radius: 3px;
-}
-
-/* 悬停某一行：该行线路名用线路色亮起（颜色由内联 style 给），其余线路名变淡，一眼看出指的是哪条线。
-   横向划动留给色带取值，纵向照常滚页面。 */
-.ping-loss-strip {
-  touch-action: pan-y;
-}
-
-.ping-loss-label {
-  transition:
-    color 120ms ease,
-    opacity 120ms ease;
-}
-
-.ping-loss-strip.has-hover .ping-loss-label {
-  opacity: 0.45;
-}
-
-.ping-loss-strip.has-hover .ping-loss-label.is-active {
-  opacity: 1;
-  color: var(--text-primary);
-  font-weight: 700;
-}
-
-/* 和主图提示框同款；只有一行，不折行，线路名太长时省略 */
-.ping-loss-tooltip {
-  white-space: nowrap;
-}
-
-.ping-loss-tooltip-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .instance-ping-task {
@@ -2152,6 +2082,11 @@ body::after {
   opacity: 0.4;
 }
 
+/* 丢包面积没有自己的悬停圆点：延迟线上已经有一个，底边再排一行点只会添乱 */
+.instance-uplot-wrap .u-cursor-pt.ping-loss-area {
+  display: none;
+}
+
 .instance-empty {
   display: flex;
   min-height: 140px;
@@ -2184,16 +2119,20 @@ body::after {
     padding-right: 88px;
   }
 
+  /* 手机上标题、选择条、右侧信息各占一行；选择条铺满、可横向滚动 */
+  .instance-panel-header.has-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding-right: 0;
+  }
+
+  .instance-panel-header.has-controls .instance-panel-aside {
+    align-self: flex-start;
+  }
+
   .instance-chart-grid {
     grid-template-columns: 1fr;
-  }
-
-  .instance-chart-controls {
-    align-items: stretch;
-  }
-
-  .instance-chart-stage {
-    min-height: 0;
   }
 
   .instance-segmented {
@@ -2205,14 +2144,13 @@ body::after {
     grid-template-columns: 1fr;
   }
 
-  .instance-ping-toolbar {
+  /* 窄屏标题行右侧那组改成靠左排：「清除 (n)」放最前会把后面全推右，改排到最后 */
+  .instance-chart-headmeta {
     justify-content: flex-start;
-    overflow-x: auto;
-    padding-bottom: 2px;
   }
 
-  .instance-chart-meta {
-    width: 100%;
+  .instance-ping-clear {
+    order: 1;
   }
 
   .instance-chart-card {
