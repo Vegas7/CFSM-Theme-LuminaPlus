@@ -298,9 +298,10 @@ export function PingChart({
     return visibleTasks.map((task) => ({
       id: task.id,
       label: taskLabels.get(task.id) ?? `任务 #${task.id}`,
+      color: taskColors.get(task.id),
       loss: chartBundle.loss[taskIndexById.get(task.id) ?? 0] ?? [],
     }));
-  }, [chartBundle, taskIndexById, taskLabels, visibleTasks]);
+  }, [chartBundle, taskColors, taskIndexById, taskLabels, visibleTasks]);
 
   useEffect(() => {
     if (chartBundle) {

@@ -8,6 +8,7 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
+import { Flag } from "@/components/ui/Flag";
 import { useAuth } from "@/hooks/useAuth";
 import { useAllNodeMeta, useHomeNodeSummaries } from "@/hooks/useNode";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
@@ -44,6 +45,7 @@ export function InstanceSwitcher({ currentUuid }: { currentUuid: string }) {
         .map((node) => ({
           uuid: node.uuid,
           name: node.name?.trim() || node.uuid,
+          region: node.region,
           online: onlineByUuid.get(node.uuid) ?? null,
         })),
     [allMeta, hiddenUuids, me?.logged_in, onlineByUuid],
@@ -159,6 +161,7 @@ export function InstanceSwitcher({ currentUuid }: { currentUuid: string }) {
                 onClick={() => select(node.uuid)}
               >
                 <span className="instance-switcher-dot" data-status={status} aria-hidden />
+                <Flag region={node.region} size={13} />
                 <span className="instance-switcher-name">{node.name}</span>
                 <span className="sr-only">，{statusLabel}</span>
                 {isActive && <Check size={14} className="instance-switcher-check" aria-hidden />}

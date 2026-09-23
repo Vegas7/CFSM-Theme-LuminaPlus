@@ -6,6 +6,7 @@ export function InstancePanel({
   id,
   title,
   kicker,
+  titleIcon,
   titleAction,
   description,
   aside,
@@ -16,6 +17,8 @@ export function InstancePanel({
   id?: string;
   title: string;
   kicker?: ReactNode;
+  /** 标题前的小图标（详情页用来放节点的国旗，和首页卡片一致）。 */
+  titleIcon?: ReactNode;
   titleAction?: ReactNode;
   description?: ReactNode;
   aside?: ReactNode;
@@ -28,6 +31,7 @@ export function InstancePanel({
         <div className="instance-panel-headings">
           {kicker != null && <span className="instance-panel-kicker">{kicker}</span>}
           <div className="instance-panel-title-row">
+            {titleIcon != null && <span className="instance-panel-title-icon">{titleIcon}</span>}
             <h2 className="instance-panel-title">{title}</h2>
             {titleAction}
           </div>

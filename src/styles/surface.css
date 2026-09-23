@@ -1278,6 +1278,14 @@ body::after {
   gap: 6px;
 }
 
+/* 标题前的国旗：和首页卡片一样旗在名字前，多留 2px 让它和文字不挤在一起 */
+.instance-panel-title-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  margin-right: 2px;
+}
+
 .instance-panel-title {
   margin: 0;
   color: var(--text-primary);
@@ -2062,6 +2070,34 @@ body::after {
   display: block;
   flex: none;
   border-radius: 3px;
+}
+
+/* 悬停某一行：该行线路名用线路色亮起（颜色由内联 style 给），其余线路名变淡，一眼看出指的是哪条线。
+   横向划动留给色带取值，纵向照常滚页面。 */
+.ping-loss-strip {
+  touch-action: pan-y;
+}
+
+.ping-loss-label {
+  transition:
+    color 120ms ease,
+    opacity 120ms ease;
+}
+
+.ping-loss-strip.has-hover .ping-loss-label {
+  opacity: 0.45;
+}
+
+.ping-loss-strip.has-hover .ping-loss-label.is-active {
+  opacity: 1;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+/* 只有一行「丢包率 xx%」，不需要主图气泡那么宽 */
+.ping-loss-tooltip {
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .instance-ping-task {
