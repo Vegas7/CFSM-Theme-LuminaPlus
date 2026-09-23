@@ -55,14 +55,15 @@ function MiniHeader({
       <Link to={detailHref} className="mini-node-title" title={node.name}>
         {node.name}
       </Link>
-      <Link
-        to={detailHref}
+      {/* 只是个图标：整块头部都能点进详情（见 useNodeDetailClick），这里不再单独做链接。 */}
+      <span
         className="mini-node-os"
         title={detailLabels.title}
+        role="img"
         aria-label={detailLabels.ariaLabel}
       >
         <OsLogo value={node.os} size={14} />
-      </Link>
+      </span>
     </header>
   );
 }

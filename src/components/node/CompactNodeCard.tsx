@@ -374,14 +374,15 @@ function CompactNodeHeader({
         </div>
       </div>
       <div className="compact-node-actions">
-        <Link
-          to={nodeDetailPath(node.uuid)}
+        {/* 只是个图标：整块头部都能点进详情（见 useNodeDetailClick），这里不再单独做链接。 */}
+        <span
           className="compact-node-detail-link"
           title={detailLabels.title}
+          role="img"
           aria-label={detailLabels.ariaLabel}
         >
           <OsLogo value={node.os} size={15} />
-        </Link>
+        </span>
       </div>
     </header>
   );

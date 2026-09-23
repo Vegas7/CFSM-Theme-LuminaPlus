@@ -107,9 +107,10 @@ export function InstanceDetails({
               积分/取极值得出，而历史接口每次固定只返回约 120 个点（区间越长采样越粗），
               数值会随返回的采样点大幅漂移，误导性大于参考价值。 */}
           <div className="instance-info-item is-stack">
-            <span className="instance-info-label">总流量</span>
+            {/* 本计费周期的上下行（按重置日清零），和下面的进度条、首页卡片同一口径，不是开机以来的累计。 */}
+            <span className="instance-info-label">本期流量</span>
             <div className="instance-info-traffic">
-              <span className="instance-info-value">{`↑ ${formatBytes(metrics.trafficUp)} · ↓ ${formatBytes(metrics.trafficDown)}`}</span>
+              <span className="instance-info-value">{`↑ ${formatBytes(metrics.trafficUpMonthly)} · ↓ ${formatBytes(metrics.trafficDownMonthly)}`}</span>
               {meta.traffic_limit > 0 && (
                 <>
                   <div className="instance-progress-track" aria-hidden>

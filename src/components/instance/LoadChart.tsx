@@ -839,10 +839,12 @@ export function LoadChart({
                 ? `${formatTrafficRateLabel(latestHistoryRecord.net_in ?? 0)} / ${formatTrafficRateLabel(latestHistoryRecord.net_out ?? 0)}`
                 : "—"
           }
+          // 本计费周期的上下行（按重置日清零），和信息面板、首页卡片同一口径。历史行里没有这个值
+          // （net_total_* 后端不存、恒为 0），没有实时数据时就留「—」，不拿 0 充数。
           note={
-            <span className="instance-overview-multi">
-              <span className="inline-flex items-center gap-1"><ArrowDown size={11} />{node ? formatBytes(node.trafficDown) : latestHistoryRecord ? formatBytes(latestHistoryRecord.net_total_down ?? 0) : "—"}</span>
-              <span className="inline-flex items-center gap-1"><ArrowUp size={11} />{node ? formatBytes(node.trafficUp) : latestHistoryRecord ? formatBytes(latestHistoryRecord.net_total_up ?? 0) : "—"}</span>
+            <span className="instance-overview-multi" title="本期流量（按重置日清零）">
+              <span className="inline-flex items-center gap-1"><ArrowDown size={11} />{node ? formatBytes(node.trafficDownMonthly) : "—"}</span>
+              <span className="inline-flex items-center gap-1"><ArrowUp size={11} />{node ? formatBytes(node.trafficUpMonthly) : "—"}</span>
             </span>
           }
           points={points}

@@ -53,11 +53,16 @@ export function formatOsLabel(osName: string, rawOs?: string | null): string {
   return match ? `${osName} ${match[0]}` : osName;
 }
 
-/** 节点卡片头部"查看实例详情"链接的 title 和 aria-label。 */
+/**
+ * 节点卡片头部系统图标的 title 和 aria-label。
+ *
+ * 图标本身不再是链接（整块头部都能点进详情），但悬停提示照旧写「点击查看详情」，
+ * 点它确实会跳 —— 点击冒泡到头部。列表视图整行是链接，同样适用。
+ */
 export function nodeDetailLinkLabels(name: string, osName: string) {
   return {
-    title: `${osName} · 查看详情`,
-    ariaLabel: `查看 ${name} 详情，系统 ${osName}`,
+    title: `${osName} · 点击查看详情`,
+    ariaLabel: `${name}，系统 ${osName}`,
   };
 }
 
