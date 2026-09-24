@@ -404,7 +404,7 @@ function CompactNodeChips({
   const tagTitle = joinTagTitle(tags);
 
   return (
-    <div className="compact-node-chip-row">
+    <div className="compact-node-chip-row" data-detail-click="off">
       {subtitle && (
         <span className="compact-node-subtitle" title={subtitle}>
           {subtitle}
