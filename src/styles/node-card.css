@@ -679,8 +679,14 @@
   gap: inherit;
 }
 
-.server-card:not(.is-offline) .node-card-head:hover .server-card-title-link,
-.compact-node-card:not(.is-offline) .node-card-head:hover .compact-node-title,
-.mini-node-card:not(.is-offline) .node-card-head:hover .mini-node-title {
+/* 标签行不算可点区域：普通光标（文字上是文本光标），点了不跳（见 useNodeDetailClick） */
+.node-card-head [data-detail-click="off"] {
+  cursor: auto;
+}
+
+/* 悬停在标签行上时名字不变色，不给「这里能点」的暗示 */
+.server-card:not(.is-offline) .node-card-head:hover:not(:has([data-detail-click="off"]:hover)) .server-card-title-link,
+.compact-node-card:not(.is-offline) .node-card-head:hover:not(:has([data-detail-click="off"]:hover)) .compact-node-title,
+.mini-node-card:not(.is-offline) .node-card-head:hover:not(:has([data-detail-click="off"]:hover)) .mini-node-title {
   color: var(--progress-cpu);
 }

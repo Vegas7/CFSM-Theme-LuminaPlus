@@ -83,7 +83,7 @@ function MiniChips({
   if (!renewalPrice && tags.length === 0 && !ipv4 && !ipv6) return null;
   const tagTitle = joinTagTitle(tags);
   return (
-    <div className="mini-node-chip-row">
+    <div className="mini-node-chip-row" data-detail-click="off">
       {renewalPrice && (
         <span className="mini-node-price-tag" title={`续费价格 ${renewalPrice}`}>
           <CircleDollarSign size={11} strokeWidth={2.2} />

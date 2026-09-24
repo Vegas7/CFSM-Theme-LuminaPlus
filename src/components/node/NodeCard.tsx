@@ -213,7 +213,7 @@ function NodeCardHeader({
           </Link>
         </div>
         {(subtitle || node.ipv4 || node.ipv6) && (
-          <div className="server-card-subtitle-row">
+          <div className="server-card-subtitle-row" data-detail-click="off">
             {subtitle && (
               <span className="server-card-subtitle" title={subtitle}>
                 {subtitle}
